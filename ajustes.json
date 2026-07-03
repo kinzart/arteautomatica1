@@ -1,0 +1,111 @@
+{
+  "feed": {
+    "txt_artista": {
+      "tamanho": 134,
+      "quebrar_linhas": true,
+      "caixa_largura": 500,
+      "caixa_altura": 390,
+      "espacamento_linhas": 1.2,
+      "escala_y": 1.35,
+      "offset_y": 10,
+      "textura": "assets/textura_papel.png",
+      "textura_opacidade": 0.7,
+      "textura_blend": "multiply"
+    },
+    "txt_data_mes": {
+      "fonte": "anton",
+      "tamanho": 62,
+      "tracking": 70,
+      "escala_x": 1.5,
+      "cor": "#FFF0D2",
+      "desgaste": 0.2,
+      "offset_x": 0,
+      "offset_y": 0,
+      "textura": "assets/textura_papel.png",
+      "textura_opacidade": 0.02,
+      "textura_blend": "multiply"
+    },
+    "txt_data_dia": {
+      "fonte": "anton",
+      "tamanho": 116,
+      "tracking": -25,
+      "escala_x": 1.32,
+      "escala_y": 1.05,
+      "cor": "#FFF0D2",
+      "desgaste": 0.22,
+      "offset_x": 0,
+      "offset_y": 0,
+      "textura": "assets/textura_papel.png",
+      "textura_opacidade": 0.02,
+      "textura_blend": "multiply"
+    },
+    "txt_data_semana": {
+      "fonte": "archivo",
+      "tamanho": 42,
+      "tracking": -35,
+      "cor": "#E9871D",
+      "offset_x": 0,
+      "offset_y": 12
+    },
+    "txt_data_hora": {
+      "fonte": "archivo",
+      "tamanho": 45,
+      "tracking": 120,
+      "cor": "#E9871D",
+      "offset_x": 0,
+      "offset_y": 10
+    },
+    "txt_edicao": {
+      "cor": "#C47A28",
+      "tamanho_max": 31,
+      "textura": "assets/textura_papel.png",
+      "textura_opacidade": 0.3,
+      "textura_blend": "multiply"
+    },
+    "txt_local_nome": {
+      "fonte": "anton",
+      "tamanho_max": 58,
+      "cor": "#D8B184",
+      "textura": "assets/textura_papel.png",
+      "textura_opacidade": 0.55,
+      "textura_blend": "multiply"
+    },
+    "txt_local_bairro": {
+      "fonte": "anton",
+      "tamanho_max": 80,
+      "cor": "#D8B184",
+      "textura": "assets/textura_papel.png",
+      "textura_opacidade": 0.55,
+      "textura_blend": "multiply"
+    },
+    "txt_local_endereco": {
+      "fonte": "mono",
+      "tamanho_max": 22,
+      "cor": "#E8DED2"
+    },
+    "linhas_rodape": {
+      "offset_x": 0,
+      "offset_y": 0,
+      "largura_1": 316,
+      "largura_2": 379,
+      "espessura": 2,
+      "cor": "#C97816"
+    },
+    "foto_artista": {
+      "zoom": 1.15,
+      "offset_x": 90,
+      "offset_y": 0,
+      "brilho": 0.93,
+      "contraste": 1.08,
+      "saturacao": 0.92,
+      "temperatura": 6
+    },
+    "global": {
+      "grain_opacidade": 0.18,
+      "bordas_opacidade": 0.12,
+      "brilho": 0.98,
+      "contraste": 1.04,
+      "saturacao": 0.96
+    }
+  }
+}

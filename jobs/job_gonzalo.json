@@ -1,0 +1,16 @@
+{
+  "edicao": 27,
+  "artista": "GONZALO ARAYA",
+  "data": "2026-06-23",
+  "hora": "19:00",
+  "foto": "assets/foto_original_pra_teste.jpeg",
+  "foco": "topo",
+  "local_nome": "TIO GETHER'S",
+  "local_bairro": "MORRO DAS PEDRAS",
+  "local_frequencia": "TODA TERÇA",
+  "local_cidade": "FLORIANÓPOLIS - SC",
+  "local_endereco": "R. MANOEL PEDRO VIEIRA, 1255 — FLORIANÓPOLIS — SC",
+  "tagline": "CONEXÕES MUSICAIS E CULTURAIS",
+  "banda_ancora": "BEBECO BLUES BAND",
+  "formatos": ["feed"]
+}
