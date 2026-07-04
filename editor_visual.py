@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from PIL import Image, ImageTk
+import numpy as np
 
 from fbs import editor_state
 
@@ -82,6 +83,7 @@ class EditorVisual(tk.Tk):
         self.overlay_alpha = tk.DoubleVar(value=.5)
         self.auto_preview = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value="Pronto. Ajustes são gravados apenas no arquivo temporário.")
+        self.metricas = tk.StringVar(value="")
         self.vars = {}
         self.widgets = {}
         self.preview_photo = None
@@ -119,12 +121,13 @@ class EditorVisual(tk.Tk):
 
         modos = ttk.Frame(esquerda)
         modos.pack(fill="x", pady=(0, 5))
-        for nome in ("Gerado", "Referência", "Lado a lado", "Overlay"):
+        for nome in ("Gerado", "Referência", "Lado a lado", "Overlay", "Diff"):
             ttk.Radiobutton(modos, text=nome, value=nome, variable=self.modo,
                             command=self._mostrar_preview).pack(side="left", padx=4)
         ttk.Label(modos, text="Opacidade overlay").pack(side="left", padx=(20, 4))
         ttk.Scale(modos, from_=0, to=1, variable=self.overlay_alpha,
                   command=lambda _v: self._mostrar_preview()).pack(side="left", fill="x", expand=True)
+        ttk.Label(esquerda, textvariable=self.metricas).pack(fill="x", pady=(0, 4))
 
         self.canvas = tk.Canvas(esquerda, bg="#202020", highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
@@ -284,6 +287,20 @@ class EditorVisual(tk.Tk):
     def _imagem_modo(self):
         gerado, referencia = self._carregar_imagens()
         modo = self.modo.get()
+        self.metricas.set("")
+        if gerado and referencia:
+            ref_metrica = referencia.resize(gerado.size, Image.LANCZOS)
+            a = np.asarray(gerado, dtype=np.float32)
+            b = np.asarray(ref_metrica, dtype=np.float32)
+            media = float(np.abs(a - b).mean())
+            texto = f"Diferença média: {media:.2f}/255"
+            try:
+                from skimage.metrics import structural_similarity
+                ssim = structural_similarity(a.astype(np.uint8), b.astype(np.uint8), channel_axis=2)
+                texto += f"  |  SSIM: {ssim:.4f}"
+            except Exception:
+                pass
+            self.metricas.set(texto)
         if modo == "Referência":
             return referencia
         if modo == "Lado a lado" and gerado and referencia:
@@ -294,6 +311,10 @@ class EditorVisual(tk.Tk):
         if modo == "Overlay" and gerado and referencia:
             ref = referencia.resize(gerado.size, Image.LANCZOS)
             return Image.blend(gerado, ref, float(self.overlay_alpha.get()))
+        if modo == "Diff" and gerado and referencia:
+            ref = referencia.resize(gerado.size, Image.LANCZOS)
+            diff = np.abs(np.asarray(gerado, dtype=np.int16) - np.asarray(ref, dtype=np.int16))
+            return Image.fromarray(np.clip(diff * 2, 0, 255).astype(np.uint8), "RGB")
         return gerado or referencia
 
     def _mostrar_preview(self):
@@ -365,4 +386,3 @@ class EditorVisual(tk.Tk):
 
 if __name__ == "__main__":
     EditorVisual().mainloop()
-
