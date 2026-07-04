@@ -86,6 +86,8 @@ class EditorVisual(tk.Tk):
         self.metricas = tk.StringVar(value="")
         self.vars = {}
         self.widgets = {}
+        self.dirty_fields = set()
+        self.current_slot = self.slot.get()
         self.preview_photo = None
         self.preview_scale = 1.0
         self.preview_origin = (0, 0)
@@ -108,7 +110,7 @@ class EditorVisual(tk.Tk):
         ttk.Label(topo, text="Slot:").pack(side="left", padx=(16, 4))
         combo = ttk.Combobox(topo, textvariable=self.slot, values=SLOTS, state="readonly", width=23)
         combo.pack(side="left")
-        combo.bind("<<ComboboxSelected>>", lambda _e: self._reconstruir_controles())
+        combo.bind("<<ComboboxSelected>>", self._trocar_slot)
         ttk.Checkbutton(topo, text="Auto preview", variable=self.auto_preview).pack(side="left", padx=14)
         ttk.Button(topo, text="Renderizar preview", command=self.renderizar).pack(side="left")
 
@@ -174,6 +176,7 @@ class EditorVisual(tk.Tk):
             filho.destroy()
         self.vars.clear()
         self.widgets.clear()
+        self.dirty_fields.clear()
         ttk.Label(self.controls_frame, text=self.slot.get(), font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 8))
         dados = self.estado.get("feed", {}).get(self.slot.get(), {})
         for chave, minimo, maximo, resolucao in self._campos_slot():
@@ -183,21 +186,21 @@ class EditorVisual(tk.Tk):
             valor = dados.get(chave, DEFAULTS.get(chave, 0))
             if isinstance(valor, bool) or chave == "mascara_inverter":
                 var = tk.BooleanVar(value=bool(valor))
-                widget = ttk.Checkbutton(linha, variable=var, command=self._campo_alterado)
+                widget = ttk.Checkbutton(linha, variable=var, command=lambda c=chave: self._campo_alterado(c))
                 widget.pack(side="left")
             elif minimo is None:
                 var = tk.StringVar(value=str(valor))
                 widget = ttk.Entry(linha, textvariable=var, width=16)
                 widget.pack(side="left", fill="x", expand=True)
-                widget.bind("<KeyRelease>", lambda _e: self._campo_alterado())
+                widget.bind("<KeyRelease>", lambda _e, c=chave: self._campo_alterado(c))
             else:
                 var = tk.DoubleVar(value=float(valor))
                 widget = ttk.Scale(linha, from_=minimo, to=maximo, variable=var,
-                                   command=lambda _v: self._campo_alterado())
+                                   command=lambda _v, c=chave: self._campo_alterado(c))
                 widget.pack(side="left", fill="x", expand=True)
                 entrada = ttk.Entry(linha, textvariable=var, width=8)
                 entrada.pack(side="left", padx=(5, 0))
-                entrada.bind("<KeyRelease>", lambda _e: self._campo_alterado())
+                entrada.bind("<KeyRelease>", lambda _e, c=chave: self._campo_alterado(c))
             self.vars[chave] = var
             self.widgets[chave] = widget
 
@@ -211,18 +214,27 @@ class EditorVisual(tk.Tk):
             return int(valor)
         return valor
 
-    def _salvar_campos(self):
-        alteracoes = {chave: self._valor(chave, var) for chave, var in self.vars.items()}
-        editor_state.atualizar_slot("feed", self.slot.get(), alteracoes)
+    def _salvar_campos(self, slot=None):
+        slot = slot or self.current_slot
+        alteracoes = {chave: self._valor(chave, self.vars[chave]) for chave in self.dirty_fields}
+        if alteracoes:
+            editor_state.atualizar_slot("feed", slot, alteracoes)
         self.estado = editor_state.carregar_temporario()
+        self.dirty_fields.clear()
         self.status.set("Ajustes temporários salvos.")
         return True
 
-    def _campo_alterado(self):
+    def _campo_alterado(self, chave):
+        self.dirty_fields.add(chave)
         if self.auto_preview.get():
             if self.debounce_id:
                 self.after_cancel(self.debounce_id)
             self.debounce_id = self.after(700, self.renderizar)
+
+    def _trocar_slot(self, _evento=None):
+        self._salvar_campos(self.current_slot)
+        self.current_slot = self.slot.get()
+        self._reconstruir_controles()
 
     def _escolher_job(self):
         caminho = filedialog.askopenfilename(initialdir=os.path.join(ROOT, "jobs"), filetypes=(("JSON", "*.json"),))
@@ -352,8 +364,10 @@ class EditorVisual(tk.Tk):
         slot = self.slot.get()
         if "offset_x" in self.vars and slot not in {"txt_data_mes", "txt_data_dia", "txt_data_semana", "txt_data_hora"}:
             self.vars["offset_x"].set(round(self.drag_values[0] + dx))
+            self.dirty_fields.add("offset_x")
         if "offset_y" in self.vars:
             self.vars["offset_y"].set(round(self.drag_values[1] + dy))
+            self.dirty_fields.add("offset_y")
 
     def _drag_fim(self, _evento):
         if not self.drag_start:
