@@ -16,6 +16,5 @@ def comparar(caminho_gerado, caminho_referencia, caminho_diff=None):
     except ImportError:
         resultado["ssim"] = None
     if caminho_diff:
-        Image.fromarray(np.clip(diferenca * 2, 0, 255).astype(np.uint8), "RGB").save(caminho_diff)
+        Image.fromarray(np.clip(diferenca * 2, 0, 255).astype(np.uint8)).save(caminho_diff)
     return resultado
-

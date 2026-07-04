@@ -32,7 +32,7 @@ O painel original continua disponível em `abrir_painel.bat`.
 Antes da substituição final, o editor cria automaticamente:
 
 ```text
-backups/ajustes_YYYY-MM-DD_HHMMSS_microsegundos.json
+backups/ajustes_YYYY-MM-DD_HHMMSS.json
 ```
 
 ## Preview e comparação

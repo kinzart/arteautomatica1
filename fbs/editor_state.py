@@ -59,7 +59,7 @@ def atualizar_slot(formato, slot, alteracoes):
 
 def criar_backup():
     os.makedirs(BACKUPS_DIR, exist_ok=True)
-    timestamp = dt.datetime.now().strftime("%Y-%m-%d_%H%M%S_%f")
+    timestamp = dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")
     destino = os.path.join(BACKUPS_DIR, f"ajustes_{timestamp}.json")
     _salvar_atomico(destino, _ler(AJUSTES_PRINCIPAL))
     return destino
@@ -70,4 +70,3 @@ def salvar_no_principal():
     backup = criar_backup()
     _salvar_atomico(AJUSTES_PRINCIPAL, dados)
     return backup
-

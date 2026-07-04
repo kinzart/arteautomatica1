@@ -19,6 +19,13 @@ O editor de calibração `editor_visual.py` usa `ajustes.editor.tmp.json`, aceit
 drag por slot e compara Gerado/Referência/Lado a lado/Overlay/Diff. Somente uma
 ação explícita promove o temporário para `ajustes.json`, sempre após backup.
 
+Baseline da branch `visual-editor-goldmaster` com `jobs/job_gonzalo.json`:
+testes automatizados e geração passam. Comparação inicial com o gold master:
+diferença média `42.1670/255`, SSIM `0.143064`. Esses números são apenas o ponto
+de partida, pois o gold master inclui composição/QR ainda ausentes no gerado.
+`testar_roundtrip.py` existe, mas depende de
+`outputs/_debug_original_com_variaveis.png`, atualmente ausente.
+
 ## Arquitetura e fluxo
 
 1. `painel.py` valida os inputs, atualiza `jobs/job.json` e chama `gerar.py`.
