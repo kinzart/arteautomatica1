@@ -1,13 +1,15 @@
 {
-  "edicao": 28,
-  "artista": "GONZALO ARAYA",
-  "data": "2026-06-23",
+  "edicao": 29,
+  "artista": "GREEN TÉA",
+  "data": "2026-07-14",
   "hora": "19:00",
-  "foto": "fotos/artista28.jpeg",
+  "foto": "../../../Downloads/UmQuarto_-_Divulga%C3%A7%C3%A3o_-_1_-_Foto_por_Manu_d_E%C3%A7a.jpg",
   "foco": "topo",
   "local_nome": "TIO GETHER'S",
   "local_bairro": "MORRO DAS PEDRAS",
   "local_endereco": "R. MANOEL PEDRO VIEIRA, 1255 — FLORIANÓPOLIS — SC",
   "banda_ancora": "BEBECO BLUES BAND",
-  "formatos": ["feed"]
+  "formatos": [
+    "feed"
+  ]
 }

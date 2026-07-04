@@ -23,7 +23,7 @@ from fbs import camadas, compositor, config, face, psd_reader, util
 def _valores_texto(job):
     d = job["_data_ptbr"]
     return {
-        "txt_artista": job["artista"],
+        "txt_artista": job["artista"].upper(),
         "txt_edicao": f"CONVIDA #{job['edicao']}",
         "txt_data_mes": d["mes"],
         "txt_data_dia": d["dia"],
@@ -74,6 +74,7 @@ def gerar_formato(job, formato, logger, ajustes):
             )
 
     ajuste_foto = ajustes_mod.ajuste_do_slot(ajustes, formato, "foto_artista")
+    mascara_real_foto = compositor.ajustar_mascara_foto(mascara_real_foto, ajuste_foto)
     if foto_posicionada is None:
         foto_bruta = Image.open(job["_foto_path"]).convert("RGB")
         foto_posicionada = util.fit_cover(foto_bruta, largura, altura, foco=job["foco"])
@@ -93,7 +94,17 @@ def gerar_formato(job, formato, logger, ajustes):
     base = psd_reader.compor_com_foto_nova(psd, variaveis, foto_rgba)
 
     for slot, texto in _valores_texto(job).items():
-        ajuste_slot = ajustes_mod.ajuste_do_slot(ajustes, formato, slot)
+        ajuste_slot = dict(ajustes_mod.ajuste_do_slot(ajustes, formato, slot))
+        if slot in {"txt_data_mes", "txt_data_dia", "txt_data_semana", "txt_data_hora"}:
+            # Mesmo eixo e limites horizontais do grupo fixo ENTRADA GRATUITA.
+            ajuste_slot.update({
+                "caixa_x": 897,
+                "caixa_largura": 142,
+                "alinhamento": "centro",
+                "offset_x": 0,
+                "ajustar_tracking": True,
+                "preenchimento_largura": 0.92,
+            })
         compositor.desenhar_texto(base, variaveis[slot], texto, ajuste=ajuste_slot, log=logger)
 
     valores_rodape = {

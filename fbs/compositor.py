@@ -1,6 +1,6 @@
 """Desenha texto e foto novos por cima da base composta do PSD."""
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 from . import config, util
 
@@ -25,7 +25,38 @@ def _altura_glifo(texto, fonte):
 def _altura_linha(linhas, fonte):
     """Pitch vertical entre linhas (ou altura de uma linha só), a partir da
     altura real do glifo mais alto entre as `linhas`."""
-    return max(_altura_glifo(l, fonte) for l in linhas) * FATOR_PITCH
+    # O pitch não pode depender dos caracteres de cada linha: Á/É/Ã possuem
+    # tinta acima da cap-height e antes faziam a distância entre linhas variar.
+    return _altura_glifo("H", fonte) * FATOR_PITCH
+
+
+def _quebrar_artista_duas_linhas(texto):
+    """Divide nomes de artista em no máximo duas linhas visualmente equilibradas."""
+    texto = " ".join(texto.upper().split())
+    palavras = texto.split()
+    if len(palavras) == 1:
+        # Caso comum como GREENTÉA: preserva palavras normais, mas permite
+        # separar um sufixo iniciado por letra acentuada.
+        acentuadas = "ÁÀÂÃÉÈÊÍÌÎÓÒÔÕÚÙÛÇ"
+        indice_acento = next((i for i, c in enumerate(texto) if c in acentuadas and i >= 3), None)
+        corte = max(3, indice_acento - 1) if indice_acento is not None else None
+        return [texto[:corte], texto[corte:]] if corte else [texto]
+    if len(palavras) == 2:
+        return palavras
+    if len(palavras) == 3:
+        # BEBECO BLUES BAND -> BEBECO / BLUES BAND. Se a primeira palavra é
+        # menor que a terceira, favorece duas palavras em cima e uma embaixo.
+        if len(palavras[0]) < len(palavras[2]):
+            return [" ".join(palavras[:2]), palavras[2]]
+        return [palavras[0], " ".join(palavras[1:])]
+
+    melhor = None
+    for i in range(1, len(palavras)):
+        a, b = " ".join(palavras[:i]), " ".join(palavras[i:])
+        score = (max(len(a), len(b)), abs(len(a) - len(b)))
+        if melhor is None or score < melhor[0]:
+            melhor = (score, [a, b])
+    return melhor[1]
 
 
 def _largura_tracked(fonte, texto, tracking):
@@ -147,7 +178,11 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
     """
     ajuste = ajuste or {}
     slot = meta["slot"]
+    layout_artista_auto = slot == "txt_artista" and ajuste.get("layout_artista_auto", True)
+    if layout_artista_auto:
+        novo_texto = "\n".join(_quebrar_artista_duas_linhas(novo_texto))
     x1, y1, x2, y2 = meta["bbox"]
+    x1 = int(ajuste.get("caixa_x", x1))
     largura_max = int(ajuste.get("caixa_largura", x2 - x1))
     altura_max = int(ajuste.get("caixa_altura", y2 - y1))
     nome_fonte = ajuste.get("fonte", config.FONTE_POR_SLOT[slot])
@@ -161,9 +196,9 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
             raise ValueError(f"{slot}.cor deve usar o formato #RRGGBB")
         cor = tuple(int(cor[i:i + 2], 16) for i in (0, 2, 4))
     cor = tuple(cor)
-    max_linhas = config.MAX_LINHAS_MULTILINHA if slot in config.SLOTS_MULTILINHA else 1
+    max_linhas = 2 if layout_artista_auto else (config.MAX_LINHAS_MULTILINHA if slot in config.SLOTS_MULTILINHA else 1)
 
-    tamanho_fixo = ajuste.get("tamanho")
+    tamanho_fixo = None if layout_artista_auto else ajuste.get("tamanho")
     if tamanho_fixo is not None:
         if not isinstance(tamanho_fixo, int) or isinstance(tamanho_fixo, bool) or tamanho_fixo <= 0:
             raise ValueError(f"{slot}.tamanho deve ser um inteiro positivo")
@@ -177,9 +212,24 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
         fonte, linhas, tamanho = _ajustar_texto_ao_bbox(
             novo_texto, nome_fonte, largura_max, altura_max, tracking,
             max_linhas=max_linhas, log=log,
-            tamanho_max=ajuste.get("tamanho_max"),
+            tamanho_max=ajuste.get("tamanho", ajuste.get("tamanho_max")) if layout_artista_auto else ajuste.get("tamanho_max"),
             tamanho_min=ajuste.get("tamanho_min", 10),
         )
+
+    # Caixa responsiva: reduz a fonte se ultrapassar o limite e, quando sobra
+    # espaço, distribui tracking para manter textos curtos visualmente alinhados.
+    if ajuste.get("ajustar_tracking") and len(linhas) == 1 and linhas[0]:
+        escala_x_layout = float(ajuste.get("escala_x", 1.0))
+        limite = largura_max * float(ajuste.get("preenchimento_largura", 0.92))
+        largura = _largura_tracked(fonte, linhas[0], tracking) * escala_x_layout
+        if largura > limite:
+            tamanho = max(1, int(tamanho * limite / largura))
+            fonte = util.carregar_fonte(nome_fonte, tamanho)
+        texto = linhas[0]
+        largura_glifos = sum(fonte.getlength(c) for c in texto)
+        alvo_sem_escala = limite / escala_x_layout
+        if len(texto) > 1:
+            tracking = ((alvo_sem_escala - largura_glifos) / (len(texto) - 1)) * 1000 / fonte.size
 
     x = x1 + ajuste.get("offset_x", 0)
     y = y1 + ajuste.get("offset_y", 0)
@@ -187,6 +237,9 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
     if not isinstance(espacamento_linhas, (int, float)) or isinstance(espacamento_linhas, bool) or espacamento_linhas <= 0:
         raise ValueError(f"{slot}.espacamento_linhas deve ser um número positivo")
     altura_linha = max(_altura_glifo(linha, fonte) for linha in linhas) * espacamento_linhas
+    if ajuste.get("textura") and len(linhas) > 1:
+        # escala_y deve alongar os glifos, não multiplicar o vazio entre linhas.
+        altura_linha /= float(ajuste.get("escala_y", 1.0))
     # draw.text((x,y), ...) não desenha a tinta rente a `y` — sobra um espaço
     # vazio (top bearing) entre `y` e o topo visível do glifo. Sem compensar
     # isso, o texto sai deslocado pra baixo do bbox (e em caixas baixas, como
@@ -197,7 +250,7 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
     opacidade = int(round(255 * ajuste.get("opacidade", 1.0)))
 
     def x_da_linha(linha):
-        largura = _largura_tracked(fonte, linha, tracking)
+        largura = _largura_tracked(fonte, linha, tracking) * float(ajuste.get("escala_x", 1.0))
         if alinhamento == "centro":
             return x + (largura_max - largura) / 2
         if alinhamento == "direita":
@@ -209,25 +262,72 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
         # A máscara ocupa o canvas inteiro para permitir tamanho fixo/offset
         # sem recortar o glifo nos limites do bbox original do PSD.
         mascara = Image.new("L", base.size, 0)
-        draw_mascara = ImageDraw.Draw(mascara)
-        y_local = y - bearing_topo
-        for linha in linhas:
-            util.draw_text_tracked(draw_mascara, (x_da_linha(linha), y_local), linha, fonte, opacidade, tracking)
-            y_local += altura_linha
-
         escala_x = float(ajuste.get("escala_x", 1.0))
         escala_y = float(ajuste.get("escala_y", 1.0))
         if escala_x <= 0 or escala_y <= 0:
             raise ValueError(f"{slot}.escala_x/escala_y devem ser positivas")
-        if (escala_x != 1.0 or escala_y != 1.0) and mascara.getbbox():
-            bx1, by1, bx2, by2 = mascara.getbbox()
-            trecho = mascara.crop((bx1, by1, bx2, by2))
-            trecho = trecho.resize((
-                max(1, round(trecho.width * escala_x)),
-                max(1, round(trecho.height * escala_y)),
-            ), Image.LANCZOS)
-            mascara = Image.new("L", base.size, 0)
-            mascara.paste(trecho, (bx1, by1))
+        if len(linhas) > 1:
+            # Escala cada glifo/linha isoladamente. Assim escala_y não amplia
+            # o vazio entre linhas nem separa visualmente os acentos.
+            fontes_linhas = []
+            for linha in linhas:
+                fonte_linha = fonte
+                if layout_artista_auto:
+                    tamanho_linha = int(ajuste.get("tamanho", fonte.size))
+                    fonte_linha = util.carregar_fonte(nome_fonte, tamanho_linha)
+                    while (tamanho_linha > ajuste.get("tamanho_min", 10)
+                           and _largura_tracked(fonte_linha, linha, tracking) * escala_x > largura_max):
+                        tamanho_linha -= 1
+                        fonte_linha = util.carregar_fonte(nome_fonte, tamanho_linha)
+                fontes_linhas.append(fonte_linha)
+
+            topo_atual = float(y)
+            fundo_linha_anterior = None
+            gap_linhas_min = float(ajuste.get("gap_linhas_min", 6))
+            for indice, linha in enumerate(linhas):
+                fonte_linha = fontes_linhas[indice]
+                temp = Image.new("L", (max(base.width * 2, largura_max * 3), fonte_linha.size * 3), 0)
+                td = ImageDraw.Draw(temp)
+                bearing = _MEDIDOR.textbbox((0, 0), linha, font=fonte_linha)[1]
+                util.draw_text_tracked(td, (10, 10 - bearing), linha, fonte_linha, opacidade, tracking)
+                bbox_tinta = temp.getbbox()
+                if not bbox_tinta:
+                    continue
+                glifo = temp.crop(bbox_tinta).resize((
+                    max(1, round((bbox_tinta[2] - bbox_tinta[0]) * escala_x)),
+                    max(1, round((bbox_tinta[3] - bbox_tinta[1]) * escala_y)),
+                ), Image.LANCZOS)
+                if alinhamento == "centro":
+                    linha_x = round(x + (largura_max - glifo.width) / 2)
+                elif alinhamento == "direita":
+                    linha_x = round(x + largura_max - glifo.width)
+                else:
+                    linha_x = round(x)
+                bbox_linha = _MEDIDOR.textbbox((0, 0), linha, font=fonte_linha)
+                bbox_cap = _MEDIDOR.textbbox((0, 0), "H", font=fonte_linha)
+                # Alinha pela cap-height, não pelo topo do acento. Assim É/Ã
+                # não empurram a linha visualmente para baixo.
+                offset_acento = max(0, (bbox_cap[1] - bbox_linha[1]) * escala_y)
+                linha_y = topo_atual - offset_acento
+                if fundo_linha_anterior is not None:
+                    linha_y = max(linha_y, fundo_linha_anterior + gap_linhas_min)
+                linha_y = round(linha_y)
+                mascara.paste(glifo, (linha_x, linha_y))
+                fundo_linha_anterior = linha_y + glifo.height
+                topo_atual += _altura_glifo("H", fonte_linha) * escala_y * espacamento_linhas
+        else:
+            draw_mascara = ImageDraw.Draw(mascara)
+            linha = linhas[0]
+            bearing_linha = _MEDIDOR.textbbox((0, 0), linha, font=fonte)[1]
+            util.draw_text_tracked(draw_mascara, (x_da_linha(linha), y - bearing_linha), linha, fonte, opacidade, tracking)
+            if (escala_x != 1.0 or escala_y != 1.0) and mascara.getbbox():
+                bx1, by1, bx2, by2 = mascara.getbbox()
+                trecho = mascara.crop((bx1, by1, bx2, by2)).resize((
+                    max(1, round((bx2 - bx1) * escala_x)),
+                    max(1, round((by2 - by1) * escala_y)),
+                ), Image.LANCZOS)
+                mascara = Image.new("L", base.size, 0)
+                mascara.paste(trecho, (bx1, by1))
 
         desgaste = float(ajuste.get("desgaste", 0))
         if desgaste < 0 or desgaste > 1:
@@ -248,11 +348,12 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
         base.alpha_composite(camada)
     else:
         draw = ImageDraw.Draw(base)
-        y_linha = y - bearing_topo
+        topo_linha = y
         for linha in linhas:
             fill = (*cor, opacidade) if base.mode == "RGBA" else cor
-            util.draw_text_tracked(draw, (x_da_linha(linha), y_linha), linha, fonte, fill, tracking)
-            y_linha += altura_linha
+            bearing_linha = _MEDIDOR.textbbox((0, 0), linha, font=fonte)[1]
+            util.draw_text_tracked(draw, (x_da_linha(linha), topo_linha - bearing_linha), linha, fonte, fill, tracking)
+            topo_linha += altura_linha
     return base
 
 
@@ -261,13 +362,28 @@ def ajustar_foto(foto, ajuste):
     ajuste = ajuste or {}
     largura, altura = foto.size
     zoom = float(ajuste.get("zoom", 1.0))
+    offset_x = float(ajuste.get("offset_x", 0))
+    offset_y = float(ajuste.get("offset_y", 0))
     if zoom <= 0:
         raise ValueError("foto_artista.zoom deve ser positivo")
+    if zoom > 5:
+        raise ValueError(
+            "foto_artista.zoom está alto demais. Use 1.0 para tamanho normal, "
+            "1.6 para 60% de ampliação e no máximo 5.0"
+        )
+    # Garante margem suficiente para que todo offset solicitado tenha efeito,
+    # sem revelar bordas. Antes, offsets maiores que a margem do zoom eram
+    # silenciosamente limitados pelo crop.
+    zoom = max(
+        zoom,
+        1.0 + 2.0 * abs(offset_x) / largura,
+        1.0 + 2.0 * abs(offset_y) / altura,
+    )
     if zoom != 1.0:
         nw, nh = max(1, round(largura * zoom)), max(1, round(altura * zoom))
         redim = foto.resize((nw, nh), Image.LANCZOS)
-        cx = (nw - largura) / 2 - float(ajuste.get("offset_x", 0))
-        cy = (nh - altura) / 2 - float(ajuste.get("offset_y", 0))
+        cx = (nw - largura) / 2 - offset_x
+        cy = (nh - altura) / 2 - offset_y
         # zoom >= 1 sempre cobre o viewport; recorta diretamente, sem criar
         # canvas preto intermediário.
         left, top = round(cx), round(cy)
@@ -308,6 +424,39 @@ def _mascara_fusao_lateral(largura, altura, lado="esquerda", frac=0.15):
     elif lado == "topo":
         alpha[:faixa, :] = rampa[:, np.newaxis]
     return Image.fromarray(alpha, mode="L")
+
+
+def ajustar_mascara_foto(mascara, ajuste):
+    """Aplica controles não destrutivos à máscara real extraída do PSD."""
+    if mascara is None:
+        return None
+    ajuste = ajuste or {}
+    w, h = mascara.size
+    escala = float(ajuste.get("mascara_escala", 1.0))
+    if escala <= 0 or escala > 5:
+        raise ValueError("foto_artista.mascara_escala deve ficar entre 0 e 5")
+    ox = int(ajuste.get("mascara_offset_x", 0))
+    oy = int(ajuste.get("mascara_offset_y", 0))
+    if escala != 1 or ox or oy:
+        nw, nh = max(1, round(w * escala)), max(1, round(h * escala))
+        redim = mascara.resize((nw, nh), Image.LANCZOS)
+        canvas = Image.new("L", (w, h), 0)
+        canvas.paste(redim, ((w - nw) // 2 + ox, (h - nh) // 2 + oy))
+        mascara = canvas
+    blur = float(ajuste.get("mascara_blur", 0))
+    if blur < 0:
+        raise ValueError("foto_artista.mascara_blur não pode ser negativo")
+    if blur:
+        mascara = mascara.filter(ImageFilter.GaussianBlur(blur))
+    mascara = ImageEnhance.Contrast(mascara).enhance(float(ajuste.get("mascara_contraste", 1)))
+    if ajuste.get("mascara_inverter", False):
+        mascara = ImageOps.invert(mascara)
+    opacidade = float(ajuste.get("mascara_opacidade", 1))
+    if not 0 <= opacidade <= 1:
+        raise ValueError("foto_artista.mascara_opacidade deve ficar entre 0 e 1")
+    if opacidade != 1:
+        mascara = mascara.point(lambda p: round(p * opacidade))
+    return mascara
 
 
 def preparar_foto_rgba(foto_path, largura, altura, foco="topo", mascara=None,

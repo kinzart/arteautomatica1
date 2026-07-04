@@ -30,6 +30,13 @@ Cada ajuste fica dentro de `formato -> slot`, por exemplo:
   O padrão é `1.2`; exemplos: `0.9` aproxima e `1.5` afasta.
 - `escala_y`: estica visualmente a altura do texto texturizado; `1` mantém.
 - `escala_x`: estica visualmente a largura do texto texturizado; `1` mantém.
+- `caixa_x`: posição horizontal absoluta da caixa.
+- `ajustar_tracking`: ajusta tamanho/tracking automaticamente para preencher a caixa.
+- `preenchimento_largura`: fração da caixa ocupada, normalmente entre `0.85` e `1`.
+- `layout_artista_auto`: no `txt_artista`, força caixa alta e distribui nomes
+  compostos em no máximo duas linhas equilibradas. O padrão é `true`.
+- `gap_linhas_min`: distância mínima em pixels entre a tinta real de duas
+  linhas; impede que acentos invadam ou encubram a linha anterior.
 - `desgaste`: erosão da tinta pela textura, entre `0` e `1`.
 - `offset_x`: move o texto; positivo para a direita, negativo para a esquerda.
 - `offset_y`: move o texto; positivo para baixo, negativo para cima.
@@ -48,9 +55,12 @@ use `tamanho_max` no lugar de `tamanho`.
 
 ## Campos de `foto_artista`
 
-- `zoom`: escala manual; `1` mantém, `1.15` aproxima e `0.9` afasta.
+- `zoom`: escala manual; `1` mantém, `1.15` amplia 15% e `1.6` amplia 60%.
+  O limite de segurança é `5`; não use porcentagens como `60`.
 - `offset_x`: move a foto em pixels; positivo para a direita.
 - `offset_y`: move a foto em pixels; positivo para baixo.
+- Offsets maiores que a margem disponível aumentam o zoom automaticamente,
+  evitando que o valor seja ignorado ou gere bordas pretas.
 - `brilho`: multiplicador; `1` mantém, `0.9` escurece, `1.1` clareia.
 - `contraste`: multiplicador; `1` mantém.
 - `saturacao`: multiplicador; `1` mantém e `0` remove a cor.
@@ -58,6 +68,12 @@ use `tamanho_max` no lugar de `tamanho`.
 - `temperatura`: de aproximadamente `-100` (frio) a `100` (quente); `0` mantém.
 - `fusao_frac`: largura proporcional da fusão sintética, usada somente quando
   o PSD não possui máscara própria para a foto.
+- `mascara_offset_x` / `mascara_offset_y`: deslocam a máscara real em pixels.
+- `mascara_escala`: escala da máscara em torno do centro; `1` mantém.
+- `mascara_blur`: suavidade da borda em pixels; `0` mantém.
+- `mascara_contraste`: dureza da transição; `1` mantém, valores maiores endurecem.
+- `mascara_opacidade`: intensidade geral entre `0` e `1`.
+- `mascara_inverter`: `true` inverte áreas visíveis e ocultas.
 
 Exemplo:
 

@@ -13,10 +13,14 @@ CAMPOS_TEXTO = {
     "offset_x", "offset_y", "caixa_largura", "caixa_altura", "alinhamento",
     "cor", "opacidade", "textura", "textura_opacidade", "textura_blend",
     "quebrar_linhas", "escala_x", "escala_y", "fonte", "desgaste",
+    "caixa_x", "ajustar_tracking", "preenchimento_largura", "layout_artista_auto",
+    "gap_linhas_min",
 }
 CAMPOS_FOTO = {
     "zoom", "offset_x", "offset_y", "brilho", "contraste", "saturacao",
-    "nitidez", "temperatura", "fusao_frac",
+    "nitidez", "temperatura", "fusao_frac", "mascara_offset_x",
+    "mascara_offset_y", "mascara_escala", "mascara_blur",
+    "mascara_contraste", "mascara_opacidade", "mascara_inverter",
 }
 CAMPOS_GLOBAL = {"grain_opacidade", "bordas_opacidade", "brilho", "contraste", "saturacao"}
 CAMPOS_LINHAS = {"offset_x", "offset_y", "largura_1", "largura_2", "espessura", "cor"}
@@ -50,6 +54,13 @@ def carregar_ajustes(caminho=None):
             espacamento = ajuste.get("espacamento_linhas")
             if espacamento is not None and (not isinstance(espacamento, (int, float)) or isinstance(espacamento, bool) or espacamento <= 0):
                 raise ValueError(f"ajustes.{formato}.{slot}.espacamento_linhas deve ser um número positivo")
+            if slot == "foto_artista" and "zoom" in ajuste:
+                zoom = ajuste["zoom"]
+                if not isinstance(zoom, (int, float)) or isinstance(zoom, bool) or not 0 < zoom <= 5:
+                    raise ValueError(
+                        f"ajustes.{formato}.foto_artista.zoom deve ficar entre 0 e 5; "
+                        "use 1.6 para ampliar 60%"
+                    )
     return dados
 
 

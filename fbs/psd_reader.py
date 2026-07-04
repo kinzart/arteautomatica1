@@ -15,7 +15,15 @@ logging.getLogger("psd_tools.psd.adjustments").setLevel(logging.ERROR)
 def _resolver_slot(nome_camada):
     if nome_camada in config.CAMADAS_VARIAVEIS:
         return nome_camada
-    return config.MAPA_CAMADAS_LEGADO.get(nome_camada)
+    legado = config.MAPA_CAMADAS_LEGADO.get(nome_camada)
+    if legado:
+        return legado
+    # O Photoshop acrescenta sufixos como "copiar 2/3" ao duplicar a foto.
+    # Aceita qualquer variante iniciada por "artista" para o painel não
+    # quebrar quando o template for salvo após uma duplicação.
+    if nome_camada.strip().lower().startswith("artista"):
+        return "foto_artista"
+    return None
 
 
 def _extrair_tracking(layer):
