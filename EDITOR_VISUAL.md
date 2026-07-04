@@ -82,3 +82,8 @@ Geração experimental:
 python gerar.py --job jobs/job_gonzalo.json --ajustes ajustes.editor.tmp.json
 ```
 
+Comparação automatizada e diff:
+
+```powershell
+python comparar_goldmaster.py outputs/fbs27_feed.png
+```
