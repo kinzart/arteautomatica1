@@ -15,6 +15,10 @@ calibração deve comparar o PNG gerado com o gold master.
 Comando principal: `python gerar.py --job jobs/job.json`. Painel Windows:
 `abrir_painel.bat`. Configuração visual: `ajustes.json`.
 
+O editor de calibração `editor_visual.py` usa `ajustes.editor.tmp.json`, aceita
+drag por slot e compara Gerado/Referência/Lado a lado/Overlay/Diff. Somente uma
+ação explícita promove o temporário para `ajustes.json`, sempre após backup.
+
 ## Arquitetura e fluxo
 
 1. `painel.py` valida os inputs, atualiza `jobs/job.json` e chama `gerar.py`.
