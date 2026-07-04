@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -18,6 +19,21 @@ from fbs import editor_state
 ROOT = os.path.dirname(os.path.abspath(__file__))
 GOLDMASTER = os.path.join(ROOT, "assets", "referencias", "fbs_goldmaster.png")
 CANVAS_W, CANVAS_H = 1080, 1350
+
+SLOT_BBOXES = {
+    "foto_artista": (172, 45, 1003, 1181),
+    "txt_artista": (56, 288, 502, 633),
+    "txt_edicao": (57, 248, 263, 272),
+    "txt_data_mes": (897, 70, 1039, 127),
+    "txt_data_dia": (897, 133, 1039, 233),
+    "txt_data_semana": (897, 252, 1039, 294),
+    "txt_data_hora": (897, 299, 1039, 340),
+    "txt_local_nome": (53, 1194, 345, 1251),
+    "txt_local_bairro": (418, 1198, 784, 1251),
+    "txt_local_endereco": (54, 1267, 663, 1289),
+    "linhas_rodape": (53, 1166, 787, 1171),
+    "global": (0, 0, CANVAS_W, CANVAS_H),
+}
 
 SLOTS = [
     "foto_artista", "txt_artista", "txt_edicao", "txt_data_mes",
@@ -81,7 +97,7 @@ class EditorVisual(tk.Tk):
         self.slot = tk.StringVar(value="txt_artista")
         self.modo = tk.StringVar(value="Gerado")
         self.overlay_alpha = tk.DoubleVar(value=.5)
-        self.auto_preview = tk.BooleanVar(value=False)
+        self.politica_render = tk.StringVar(value="Ao soltar")
         self.status = tk.StringVar(value="Pronto. Ajustes são gravados apenas no arquivo temporário.")
         self.metricas = tk.StringVar(value="")
         self.vars = {}
@@ -97,9 +113,18 @@ class EditorVisual(tk.Tk):
         self.render_running = False
         self.render_pending = False
         self.render_version = 0
+        self.change_version = 0
+        self._cached_reference = Image.open(GOLDMASTER).convert("RGB").copy() if os.path.isfile(GOLDMASTER) else None
+        self._cached_generated = None
+        self._cached_ref_resized = None
+        self._cached_output_path = None
+        self._cached_metrics = ""
+        self._render_queue = queue.Queue()
         self._montar()
         self._reconstruir_controles()
+        self._recarregar_gerado(force=True)
         self._mostrar_preview()
+        self.after(100, self._poll_render_queue)
 
     def _montar(self):
         topo = ttk.Frame(self, padding=(10, 8))
@@ -111,8 +136,11 @@ class EditorVisual(tk.Tk):
         combo = ttk.Combobox(topo, textvariable=self.slot, values=SLOTS, state="readonly", width=23)
         combo.pack(side="left")
         combo.bind("<<ComboboxSelected>>", self._trocar_slot)
-        ttk.Checkbutton(topo, text="Auto preview", variable=self.auto_preview).pack(side="left", padx=14)
-        ttk.Button(topo, text="Renderizar preview", command=self.renderizar).pack(side="left")
+        ttk.Label(topo, text="Render:").pack(side="left", padx=(14, 4))
+        ttk.Combobox(topo, textvariable=self.politica_render,
+                     values=("Manual", "Ao soltar", "Automático leve"),
+                     state="readonly", width=17).pack(side="left")
+        ttk.Button(topo, text="Renderizar preview", command=self.render_preview_real).pack(side="left", padx=(8, 0))
 
         corpo = ttk.Panedwindow(self, orient="horizontal")
         corpo.pack(fill="both", expand=True, padx=10, pady=(0, 8))
@@ -186,23 +214,30 @@ class EditorVisual(tk.Tk):
             valor = dados.get(chave, DEFAULTS.get(chave, 0))
             if isinstance(valor, bool) or chave == "mascara_inverter":
                 var = tk.BooleanVar(value=bool(valor))
-                widget = ttk.Checkbutton(linha, variable=var, command=lambda c=chave: self._campo_alterado(c))
+                widget = ttk.Checkbutton(linha, variable=var,
+                                         command=lambda c=chave: self._controle_solto(c))
                 widget.pack(side="left")
             elif minimo is None:
                 var = tk.StringVar(value=str(valor))
                 widget = ttk.Entry(linha, textvariable=var, width=16)
                 widget.pack(side="left", fill="x", expand=True)
                 widget.bind("<KeyRelease>", lambda _e, c=chave: self._campo_alterado(c))
+                widget.bind("<Return>", lambda _e, c=chave: self._controle_solto(c))
+                widget.bind("<FocusOut>", lambda _e, c=chave: self._controle_solto(c))
             else:
                 var = tk.DoubleVar(value=float(valor))
                 widget = ttk.Scale(linha, from_=minimo, to=maximo, variable=var,
                                    command=lambda _v, c=chave: self._campo_alterado(c))
                 widget.pack(side="left", fill="x", expand=True)
+                widget.bind("<ButtonRelease-1>", lambda _e, c=chave: self._controle_solto(c))
                 entrada = ttk.Entry(linha, textvariable=var, width=8)
                 entrada.pack(side="left", padx=(5, 0))
                 entrada.bind("<KeyRelease>", lambda _e, c=chave: self._campo_alterado(c))
+                entrada.bind("<Return>", lambda _e, c=chave: self._controle_solto(c))
+                entrada.bind("<FocusOut>", lambda _e, c=chave: self._controle_solto(c))
             self.vars[chave] = var
             self.widgets[chave] = widget
+        self.after_idle(self.update_fast_overlay)
 
     def _valor(self, chave, var):
         valor = var.get()
@@ -226,10 +261,20 @@ class EditorVisual(tk.Tk):
 
     def _campo_alterado(self, chave):
         self.dirty_fields.add(chave)
-        if self.auto_preview.get():
+        self.change_version += 1
+        self.status.set("Preview rápido — render real pendente.")
+        self.update_fast_overlay()
+        if self.politica_render.get() == "Automático leve":
             if self.debounce_id:
                 self.after_cancel(self.debounce_id)
-            self.debounce_id = self.after(700, self.renderizar)
+            self.debounce_id = self.after(1500, self.render_preview_real)
+
+    def _controle_solto(self, chave):
+        self._campo_alterado(chave)
+        if self.politica_render.get() == "Ao soltar":
+            if self.debounce_id:
+                self.after_cancel(self.debounce_id)
+            self.debounce_id = self.after(50, self.render_preview_real)
 
     def _trocar_slot(self, _evento=None):
         self._salvar_campos(self.current_slot)
@@ -240,6 +285,8 @@ class EditorVisual(tk.Tk):
         caminho = filedialog.askopenfilename(initialdir=os.path.join(ROOT, "jobs"), filetypes=(("JSON", "*.json"),))
         if caminho:
             self.job_path.set(os.path.relpath(caminho, ROOT))
+            self._recarregar_gerado(force=True)
+            self._mostrar_preview()
 
     def _job_absoluto(self):
         caminho = self.job_path.get().strip()
@@ -253,78 +300,107 @@ class EditorVisual(tk.Tk):
         except Exception:
             return None
 
-    def renderizar(self):
+    def render_preview_real(self):
+        """Render PSD real em background; nunca é chamado por tick de slider."""
         try:
             self._salvar_campos()
         except Exception as exc:
             messagebox.showerror("Ajustes inválidos", str(exc))
             return
-        self.render_version += 1
+        versao = self.change_version
         if self.render_running:
             self.render_pending = True
             self.status.set("Alteração pendente; aguardando render atual…")
             return
-        versao = self.render_version
+        self.render_version = versao
         self.render_running = True
-        self.status.set("Renderizando preview…")
+        self.status.set("Renderizando PSD…")
+        job_absoluto = self._job_absoluto()
+        ajustes_temporarios = editor_state.AJUSTES_TEMP
 
         def executar():
             proc = subprocess.run(
-                [sys.executable, "gerar.py", "--job", self._job_absoluto(),
-                 "--ajustes", editor_state.AJUSTES_TEMP],
+                [sys.executable, "gerar.py", "--job", job_absoluto,
+                 "--ajustes", ajustes_temporarios],
                 cwd=ROOT, capture_output=True, text=True,
             )
-            self.after(0, lambda: self._render_concluido(versao, proc))
+            self._render_queue.put((versao, proc))
 
         threading.Thread(target=executar, daemon=True).start()
+
+    def _poll_render_queue(self):
+        try:
+            while True:
+                versao, processo = self._render_queue.get_nowait()
+                self._render_concluido(versao, processo)
+        except queue.Empty:
+            pass
+        try:
+            self.after(100, self._poll_render_queue)
+        except tk.TclError:
+            pass
 
     def _render_concluido(self, versao, processo):
         self.render_running = False
         if processo.returncode != 0:
             self.status.set("Falha no preview.")
             messagebox.showerror("Erro ao renderizar", processo.stderr or processo.stdout)
-        elif versao == self.render_version:
+        elif versao == self.change_version:
+            self._recarregar_gerado(force=True)
             self.status.set("Preview atualizado.")
             self._mostrar_preview()
-        if self.render_pending or versao != self.render_version:
+        else:
+            self.status.set("Render ignorado: já existe mudança mais recente.")
+        if self.render_pending:
             self.render_pending = False
-            self.renderizar()
+            self.render_preview_real()
+
+    def _recarregar_gerado(self, force=False):
+        caminho = self._output_path()
+        if caminho and os.path.isfile(caminho) and (force or caminho != self._cached_output_path):
+            self._cached_generated = Image.open(caminho).convert("RGB").copy()
+            self._cached_output_path = caminho
+            self._cached_ref_resized = (
+                self._cached_reference.resize(self._cached_generated.size, Image.LANCZOS)
+                if self._cached_reference else None
+            )
+            self._atualizar_metricas_cache()
+
+    def _atualizar_metricas_cache(self):
+        if self._cached_generated is None or self._cached_ref_resized is None:
+            self._cached_metrics = ""
+            return
+        a = np.asarray(self._cached_generated, dtype=np.float32)
+        b = np.asarray(self._cached_ref_resized, dtype=np.float32)
+        media = float(np.abs(a - b).mean())
+        texto = f"Diferença média: {media:.2f}/255"
+        try:
+            from skimage.metrics import structural_similarity
+            ssim = structural_similarity(a.astype(np.uint8), b.astype(np.uint8), channel_axis=2)
+            texto += f"  |  SSIM: {ssim:.4f}"
+        except Exception:
+            pass
+        self._cached_metrics = texto
 
     def _carregar_imagens(self):
-        gerado_path = self._output_path()
-        gerado = Image.open(gerado_path).convert("RGB") if gerado_path and os.path.isfile(gerado_path) else None
-        referencia = Image.open(GOLDMASTER).convert("RGB") if os.path.isfile(GOLDMASTER) else None
-        return gerado, referencia
+        return self._cached_generated, self._cached_reference
 
     def _imagem_modo(self):
         gerado, referencia = self._carregar_imagens()
         modo = self.modo.get()
-        self.metricas.set("")
-        if gerado and referencia:
-            ref_metrica = referencia.resize(gerado.size, Image.LANCZOS)
-            a = np.asarray(gerado, dtype=np.float32)
-            b = np.asarray(ref_metrica, dtype=np.float32)
-            media = float(np.abs(a - b).mean())
-            texto = f"Diferença média: {media:.2f}/255"
-            try:
-                from skimage.metrics import structural_similarity
-                ssim = structural_similarity(a.astype(np.uint8), b.astype(np.uint8), channel_axis=2)
-                texto += f"  |  SSIM: {ssim:.4f}"
-            except Exception:
-                pass
-            self.metricas.set(texto)
+        self.metricas.set(self._cached_metrics)
         if modo == "Referência":
             return referencia
         if modo == "Lado a lado" and gerado and referencia:
-            ref = referencia.resize(gerado.size, Image.LANCZOS)
+            ref = self._cached_ref_resized
             saida = Image.new("RGB", (gerado.width * 2, gerado.height))
             saida.paste(gerado, (0, 0)); saida.paste(ref, (gerado.width, 0))
             return saida
         if modo == "Overlay" and gerado and referencia:
-            ref = referencia.resize(gerado.size, Image.LANCZOS)
+            ref = self._cached_ref_resized
             return Image.blend(gerado, ref, float(self.overlay_alpha.get()))
         if modo == "Diff" and gerado and referencia:
-            ref = referencia.resize(gerado.size, Image.LANCZOS)
+            ref = self._cached_ref_resized
             diff = np.abs(np.asarray(gerado, dtype=np.int16) - np.asarray(ref, dtype=np.int16))
             return Image.fromarray(np.clip(diff * 2, 0, 255).astype(np.uint8), "RGB")
         return gerado or referencia
@@ -346,6 +422,45 @@ class EditorVisual(tk.Tk):
         self.canvas.create_image(ox, oy, image=self.preview_photo, anchor="nw")
         self.preview_scale = escala if self.modo.get() != "Lado a lado" else escala * 2
         self.preview_origin = (ox, oy)
+        self.update_fast_overlay()
+
+    def _valor_visual(self, chave, fallback):
+        dados = self.estado.get("feed", {}).get(self.current_slot, {})
+        if chave in self.dirty_fields or chave in dados:
+            try:
+                return self._valor(chave, self.vars[chave])
+            except (KeyError, tk.TclError, ValueError):
+                return dados.get(chave, fallback)
+        return fallback
+
+    def update_fast_overlay(self):
+        """Atualiza somente a guia instantânea; nunca chama gerar.py."""
+        if not hasattr(self, "canvas"):
+            return
+        self.canvas.delete("fast-guide")
+        slot = self.current_slot
+        if slot == "global" or self.modo.get() not in ("Gerado", "Overlay"):
+            return
+        x1, y1, x2, y2 = SLOT_BBOXES[slot]
+        if slot.startswith("txt_"):
+            bbox_largura, bbox_altura = x2 - x1, y2 - y1
+            x1 = float(self._valor_visual("caixa_x", x1))
+            largura = float(self._valor_visual("caixa_largura", bbox_largura))
+            altura = float(self._valor_visual("caixa_altura", bbox_altura))
+            x2, y2 = x1 + largura, y1 + altura
+        ox = float(self._valor_visual("offset_x", 0))
+        oy = float(self._valor_visual("offset_y", 0))
+        if slot in {"txt_data_mes", "txt_data_dia", "txt_data_semana", "txt_data_hora"}:
+            ox = 0  # eixo horizontal é fixado pelo pipeline.
+        x1, x2, y1, y2 = x1 + ox, x2 + ox, y1 + oy, y2 + oy
+        origem_x, origem_y = self.preview_origin
+        escala = self.preview_scale
+        coords = (origem_x + x1 * escala, origem_y + y1 * escala,
+                  origem_x + x2 * escala, origem_y + y2 * escala)
+        self.canvas.create_rectangle(*coords, outline="#00ff66", width=2,
+                                     dash=(6, 4), tags="fast-guide")
+        self.canvas.create_text(coords[0] + 4, coords[1] + 4, text=slot,
+                                fill="#00ff66", anchor="nw", tags="fast-guide")
 
     def _drag_inicio(self, evento):
         if self.slot.get() == "global" or self.modo.get() not in ("Gerado", "Overlay"):
@@ -368,13 +483,19 @@ class EditorVisual(tk.Tk):
         if "offset_y" in self.vars:
             self.vars["offset_y"].set(round(self.drag_values[1] + dy))
             self.dirty_fields.add("offset_y")
+        self.change_version += 1
+        self.status.set("Preview rápido — arrastando guia.")
+        self.update_fast_overlay()
 
     def _drag_fim(self, _evento):
         if not self.drag_start:
             return
         self.drag_start = None
         self._salvar_campos()
-        self.renderizar()
+        if self.politica_render.get() in ("Ao soltar", "Automático leve"):
+            self.render_preview_real()
+        else:
+            self.status.set("Render real pendente — clique em Renderizar preview.")
 
     def _salvar_principal(self):
         self._salvar_campos()

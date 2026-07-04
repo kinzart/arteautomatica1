@@ -18,6 +18,9 @@ Comando principal: `python gerar.py --job jobs/job.json`. Painel Windows:
 O editor de calibração `editor_visual.py` usa `ajustes.editor.tmp.json`, aceita
 drag por slot e compara Gerado/Referência/Lado a lado/Overlay/Diff. Somente uma
 ação explícita promove o temporário para `ajustes.json`, sempre após backup.
+O preview interativo usa cache e uma bounding box instantânea; sliders/drag não
+chamam o PSD continuamente. Render real funciona em background nos modos
+Manual, Ao soltar ou Automático leve (debounce de 1500 ms).
 
 Baseline da branch `visual-editor-goldmaster` com `jobs/job_gonzalo.json`:
 testes automatizados e geração passam. Comparação inicial com o gold master:
