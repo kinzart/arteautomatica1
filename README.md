@@ -21,9 +21,11 @@ python gerar.py --job jobs/job.json
 Os PNGs são gravados em `outputs/`. Consulte `AJUSTES.md` para todos os
 controles e `RESUMO_PROJETO.md` para arquitetura, estado e próximos passos.
 
+Referência visual oficial: `assets/referencias/fbs_goldmaster.png`. O PSD
+continua sendo usado como estrutura técnica, não como alvo visual final.
+
 ## Testes
 
 ```powershell
 python -m unittest -v test_layout_artista.py
 ```
-

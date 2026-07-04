@@ -8,6 +8,10 @@ tipografia variável são substituídas pelo pipeline. O painel `painel.py` edit
 os quatro inputs principais (`artista`, `foto`, `data`, `edicao`) preservando
 os demais dados do job e mostra uma prévia.
 
+O alvo visual prioritário é `assets/referencias/fbs_goldmaster.png`. O PSD é a
+estrutura técnica do pipeline, mas não é a autoridade estética final. Toda
+calibração deve comparar o PNG gerado com o gold master.
+
 Comando principal: `python gerar.py --job jobs/job.json`. Painel Windows:
 `abrir_painel.bat`. Configuração visual: `ajustes.json`.
 
