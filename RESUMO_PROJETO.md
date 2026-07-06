@@ -23,6 +23,14 @@ e render PSD fiel (~15s). Manual é o padrão e nunca chama o PSD automaticament
 Ao soltar e Automático leve permanecem disponíveis para validação deliberada.
 O cache técnico fica em `cache_preview/` e é regenerado apenas se necessário.
 
+Review de 2026-07-06: o editor agora edita também artista, edição, data, hora e
+textos de rodapé por meio de `jobs/job.editor.tmp.json`; só promove o conteúdo
+ao job original por confirmação e com backup. Sliders são quantizados por tipo
+(pixels inteiros; escalas/opacidades com casas limitadas), cores possuem seletor
+e validação, e opacidade de texto sólido usa composição alpha real. Erros de
+render mostram a causa resumida em vez do traceback completo. Detalhes e
+limitações estão em `REVIEW_EDITOR_2026-07-06.md`.
+
 Baseline da branch `visual-editor-goldmaster` com `jobs/job_gonzalo.json`:
 testes automatizados e geração passam. Comparação inicial com o gold master:
 diferença média `42.1670/255`, SSIM `0.143064`. Esses números são apenas o ponto

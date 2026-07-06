@@ -25,7 +25,7 @@ O painel original continua disponível em `abrir_painel.bat`.
 2. Selecione o slot visual.
 3. Mantenha **Manual — recomendado** para ajuste fino.
 4. Altere sliders/campos ou arraste o elemento; a guia responde imediatamente.
-5. Quando necessário, clique em **Renderizar preview** para validar no PSD.
+5. Quando necessário, clique em **Renderizar PSD** para validar no PSD.
 6. Compare nos modos Gerado, Referência, Lado a lado, Overlay ou Diff.
 7. Continue iterando: somente `ajustes.editor.tmp.json` será alterado.
 8. Quando estiver satisfeito, clique em **Salvar em ajustes.json**.
@@ -87,9 +87,30 @@ ajuste vertical desses slots.
 - **Restaurar do ajustes.json:** descarta o temporário atual após confirmação.
 - **Criar backup agora:** copia o arquivo principal sem alterá-lo.
 - **Gerar imagem final:** usa `ajustes.json`, não o temporário.
+- `jobs/job.editor.tmp.json`: conteúdo textual experimental.
+- **Salvar textos no job:** cria backup e promove o conteúdo temporário para o
+  job selecionado.
 
 As alterações de um slot usam merge: campos não exibidos ou não modificados
 são preservados.
+
+## Edição de conteúdo e controles
+
+Slots de artista, edição, data, hora e rodapé mostram um campo de conteúdo no
+topo do painel. A saída do artista continua sendo convertida para caixa alta.
+
+Campos numéricos são quantizados: offsets, tamanhos, tracking e dimensões usam
+pixels inteiros; escalas e opacidades mostram somente as casas previstas pelo
+controle. Valores digitados aceitam ponto ou vírgula, mas o JSON usa ponto.
+
+Campos de cor aceitam `#RRGGBB` ou a forma curta `#RGB`, normalizada
+automaticamente, e possuem botão **Escolher…**. Um valor parcial não dispara
+render; confirme com Enter ou saia do campo.
+
+`opacidade` controla o elemento inteiro. `textura_opacidade` controla apenas a
+mistura da textura dentro do texto, e `mascara_opacidade` controla a máscara da
+foto. Grain e bordas globais são fiéis no **Renderizar PSD**; o preview rápido
+reutiliza a base cacheada e, portanto, apenas os aproxima.
 
 ## Linha de comando
 
