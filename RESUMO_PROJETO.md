@@ -37,6 +37,12 @@ temporário. **Voltar ao PSD original** limpa apenas os overrides do feed após
 confirmação; não altera arquivos principais e o reset também é reversível pelo
 histórico.
 
+A troca de foto também está integrada ao editor visual. **Trocar foto…** grava
+somente o caminho no job temporário, atualiza o preview conforme a política de
+render e participa do mesmo histórico de desfazer/refazer. A promoção para o
+job original ocorre apenas em **Salvar dados/foto no job**, com backup. O
+`painel.py` permanece funcional como interface legada.
+
 Baseline da branch `visual-editor-goldmaster` com `jobs/job_gonzalo.json`:
 testes automatizados e geração passam. Comparação inicial com o gold master:
 diferença média `42.1670/255`, SSIM `0.143064`. Esses números são apenas o ponto

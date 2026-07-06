@@ -115,6 +115,8 @@ class EditorVisual(tk.Tk):
         self.job_path = tk.StringVar(value=os.path.join("jobs", "job_gonzalo.json"))
         self._preparar_job_temporario(force=False)
         self.historico = editor_history.HistoricoEditor(self._capturar_snapshot())
+        self.photo_var = tk.StringVar(value=str(self._carregar_job_temporario().get("foto", "")))
+        self.photo_dirty = False
         self.slot = tk.StringVar(value="txt_artista")
         self.modo = tk.StringVar(value="Gerado")
         self.overlay_alpha = tk.DoubleVar(value=.5)
@@ -182,8 +184,10 @@ class EditorVisual(tk.Tk):
         self.undo_button.pack(side="left")
         self.redo_button = ttk.Button(historico_bar, text="↷ Refazer  Ctrl+Shift+Z", command=self._refazer)
         self.redo_button.pack(side="left", padx=(5, 0))
+        ttk.Button(historico_bar, text="Trocar foto…",
+                   command=self._escolher_foto).pack(side="left", padx=(16, 0))
         ttk.Button(historico_bar, text="Voltar ao PSD original…",
-                   command=self._voltar_psd_original).pack(side="left", padx=(16, 0))
+                   command=self._voltar_psd_original).pack(side="left", padx=(5, 0))
         ttk.Label(historico_bar, text="Histórico desta sessão: ajustes + textos temporários.",
                   foreground="#606060").pack(side="left", padx=(12, 0))
         self.bind_all("<Control-z>", self._desfazer)
@@ -232,7 +236,7 @@ class EditorVisual(tk.Tk):
         for texto, comando in (
             ("Salvar temporários", self._salvar_campos),
             ("Salvar em ajustes.json", self._salvar_principal),
-            ("Salvar textos no job", self._salvar_job_original),
+            ("Salvar dados/foto no job", self._salvar_job_original),
             ("Restaurar do ajustes.json", self._restaurar),
             ("Criar backup agora", self._backup),
             ("Abrir outputs", lambda: os.startfile(os.path.join(ROOT, "outputs"))),
@@ -262,7 +266,19 @@ class EditorVisual(tk.Tk):
         self.content_var = None
         self.content_key = None
         self.content_dirty = False
+        self.photo_dirty = False
         ttk.Label(self.controls_frame, text=self.slot.get(), font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 8))
+        if self.slot.get() == "foto_artista":
+            job = self._carregar_job_temporario()
+            self.photo_var.set(str(job.get("foto", "")))
+            foto = ttk.LabelFrame(self.controls_frame, text="Foto do artista", padding=6)
+            foto.pack(fill="x", pady=(0, 10))
+            entrada_foto = ttk.Entry(foto, textvariable=self.photo_var)
+            entrada_foto.pack(side="left", fill="x", expand=True)
+            entrada_foto.bind("<KeyRelease>", self._foto_digitada)
+            entrada_foto.bind("<Return>", self._foto_confirmada)
+            entrada_foto.bind("<FocusOut>", self._foto_confirmada)
+            ttk.Button(foto, text="Escolher…", command=self._escolher_foto).pack(side="left", padx=(5, 0))
         if self.slot.get() in SLOT_JOB_FIELDS:
             self.content_key, rotulo = SLOT_JOB_FIELDS[self.slot.get()]
             job = self._carregar_job_temporario()
@@ -375,6 +391,8 @@ class EditorVisual(tk.Tk):
             editor_state.atualizar_slot("feed", slot, alteracoes)
         if self.content_dirty:
             self._salvar_conteudo_temporario(registrar=False)
+        if self.photo_dirty:
+            self._salvar_foto_temporaria(registrar=False)
         self.estado = editor_state.carregar_temporario()
         self.dirty_fields.clear()
         self._registrar_historico()
@@ -431,6 +449,7 @@ class EditorVisual(tk.Tk):
         if caminho:
             self.job_path.set(os.path.relpath(caminho, ROOT))
             self._preparar_job_temporario(force=True)
+            self.photo_var.set(str(self._carregar_job_temporario().get("foto", "")))
             self._reiniciar_historico()
             self._reconstruir_controles()
             self._recarregar_gerado(force=True)
@@ -442,6 +461,82 @@ class EditorVisual(tk.Tk):
 
     def _job_absoluto(self):
         return JOB_TEMP_PATH
+
+    def _foto_absoluta(self, caminho=None):
+        caminho = (caminho if caminho is not None else self.photo_var.get()).strip()
+        return caminho if os.path.isabs(caminho) else os.path.join(ROOT, caminho)
+
+    def _validar_foto(self):
+        caminho = self.photo_var.get().strip()
+        if not caminho:
+            raise ValueError("selecione uma foto")
+        absoluto = self._foto_absoluta(caminho)
+        if not os.path.isfile(absoluto):
+            raise ValueError(f"foto não encontrada: {caminho}")
+        try:
+            with Image.open(absoluto) as imagem:
+                imagem.verify()
+        except Exception as exc:
+            raise ValueError(f"arquivo de foto inválido: {caminho}") from exc
+        return caminho.replace("\\", "/")
+
+    def _salvar_foto_temporaria(self, registrar=True):
+        caminho = self._validar_foto()
+        dados = self._carregar_job_temporario()
+        dados["foto"] = caminho
+        self._salvar_json_atomico(JOB_TEMP_PATH, dados)
+        self.photo_dirty = False
+        if registrar:
+            self._registrar_historico()
+
+    def _foto_digitada(self, _evento=None):
+        self.photo_dirty = True
+        self.change_version += 1
+        self.status.set("Foto editada — confirme com Enter ou escolha um arquivo.")
+
+    def _foto_confirmada(self, _evento=None):
+        if not self.photo_dirty:
+            return
+        try:
+            self._salvar_foto_temporaria()
+        except ValueError as exc:
+            self.status.set(f"Foto inválida: {exc}")
+            return
+        self._render_apos_dado_alterado()
+
+    def _escolher_foto(self):
+        atual = self._foto_absoluta()
+        inicial = os.path.dirname(atual) if os.path.isfile(atual) else os.path.join(ROOT, "fotos")
+        if not os.path.isdir(inicial):
+            inicial = ROOT
+        caminho = filedialog.askopenfilename(
+            title="Escolha a foto do artista",
+            initialdir=inicial,
+            filetypes=(("Imagens", "*.jpg *.jpeg *.png *.webp"), ("Todos os arquivos", "*.*")),
+        )
+        if not caminho:
+            return
+        try:
+            relativo = os.path.relpath(caminho, ROOT).replace("\\", "/")
+            self.photo_var.set(relativo)
+            self.photo_dirty = True
+            self.change_version += 1
+            self._salvar_campos()
+        except ValueError as exc:
+            messagebox.showerror("Dados inválidos", str(exc))
+            return
+        self._render_apos_dado_alterado()
+
+    def _render_apos_dado_alterado(self):
+        politica = self.politica_render.get()
+        if politica == POLICY_MANUAL:
+            self.render_preview_fast()
+        elif politica == POLICY_RELEASE:
+            self.render_preview_real()
+        else:
+            if self.debounce_id:
+                self.after_cancel(self.debounce_id)
+            self.debounce_id = self.after(1500, self.render_preview_real)
 
     def _capturar_snapshot(self):
         return {
@@ -470,8 +565,10 @@ class EditorVisual(tk.Tk):
             self.debounce_id = None
         self.estado = editor_state.substituir_temporario(snapshot["ajustes"])
         self._salvar_json_atomico(JOB_TEMP_PATH, snapshot["job"])
+        self.photo_var.set(str(snapshot["job"].get("foto", "")))
         self.dirty_fields.clear()
         self.content_dirty = False
+        self.photo_dirty = False
         self.change_version += 1
         self._reconstruir_controles()
         self._atualizar_botoes_historico()
@@ -584,15 +681,7 @@ class EditorVisual(tk.Tk):
         except ValueError as exc:
             self.status.set(f"Conteúdo inválido: {exc}")
             return
-        politica = self.politica_render.get()
-        if politica == POLICY_MANUAL:
-            self.render_preview_fast()
-        elif politica == POLICY_RELEASE:
-            self.render_preview_real()
-        else:
-            if self.debounce_id:
-                self.after_cancel(self.debounce_id)
-            self.debounce_id = self.after(1500, self.render_preview_real)
+        self._render_apos_dado_alterado()
 
     def _output_path(self):
         try:
@@ -917,9 +1006,9 @@ class EditorVisual(tk.Tk):
         try:
             self._salvar_campos()
         except ValueError as exc:
-            messagebox.showerror("Conteúdo inválido", str(exc))
+            messagebox.showerror("Dados inválidos", str(exc))
             return
-        if not messagebox.askyesno("Salvar textos", "Criar backup e atualizar o job selecionado?"):
+        if not messagebox.askyesno("Salvar dados e foto", "Criar backup e atualizar o job selecionado?"):
             return
         origem = self._source_job_absoluto()
         os.makedirs(editor_state.BACKUPS_DIR, exist_ok=True)

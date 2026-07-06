@@ -26,6 +26,10 @@
 9. **Não havia retorno real ao PSD.** O novo comando confirmado remove os
    overrides temporários do feed, preserva textos e arquivos principais e pode
    ser desfeito imediatamente.
+10. **A troca de foto exigia o painel legado.** O editor visual agora seleciona
+    e valida JPG/JPEG/PNG/WebP, grava apenas no job temporário, atualiza o
+    preview e inclui a troca no histórico. A promoção ao job original continua
+    explícita e protegida por backup.
 
 ## Invariantes preservados
 

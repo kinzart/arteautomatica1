@@ -22,13 +22,14 @@ O painel original continua disponível em `abrir_painel.bat`.
 ## Fluxo recomendado
 
 1. Escolha um job, normalmente `jobs/job_gonzalo.json` para calibração.
-2. Selecione o slot visual.
-3. Mantenha **Manual — recomendado** para ajuste fino.
-4. Altere sliders/campos ou arraste o elemento; a guia responde imediatamente.
-5. Quando necessário, clique em **Renderizar PSD** para validar no PSD.
-6. Compare nos modos Gerado, Referência, Lado a lado, Overlay ou Diff.
-7. Continue iterando: somente `ajustes.editor.tmp.json` será alterado.
-8. Quando estiver satisfeito, clique em **Salvar em ajustes.json**.
+2. Use **Trocar foto…** quando quiser substituir a imagem do artista.
+3. Selecione o slot visual.
+4. Mantenha **Manual — recomendado** para ajuste fino.
+5. Altere sliders/campos ou arraste o elemento; a guia responde imediatamente.
+6. Quando necessário, clique em **Renderizar PSD** para validar no PSD.
+7. Compare nos modos Gerado, Referência, Lado a lado, Overlay ou Diff.
+8. Continue iterando: somente os arquivos temporários serão alterados.
+9. Quando estiver satisfeito, salve ajustes e dados do job explicitamente.
 
 Antes da substituição final, o editor cria automaticamente:
 
@@ -108,8 +109,8 @@ aprovada atualmente no projeto, e não ao estado sem overrides do PSD.
 - **Criar backup agora:** copia o arquivo principal sem alterá-lo.
 - **Gerar imagem final:** usa `ajustes.json`, não o temporário.
 - `jobs/job.editor.tmp.json`: conteúdo textual experimental.
-- **Salvar textos no job:** cria backup e promove o conteúdo temporário para o
-  job selecionado.
+- **Salvar dados/foto no job:** cria backup e promove textos e caminho da foto
+  temporários para o job selecionado.
 
 As alterações de um slot usam merge: campos não exibidos ou não modificados
 são preservados.
@@ -118,6 +119,16 @@ são preservados.
 
 Slots de artista, edição, data, hora e rodapé mostram um campo de conteúdo no
 topo do painel. A saída do artista continua sendo convertida para caixa alta.
+
+A foto pode ser escolhida pelo botão permanente **Trocar foto…** ou dentro do
+slot `foto_artista`. A escolha atualiza `jobs/job.editor.tmp.json`, entra no
+histórico de desfazer/refazer e dispara somente o preview permitido pela
+política selecionada. O arquivo da imagem não é duplicado: o job guarda seu
+caminho relativo ao projeto sempre que possível.
+
+O painel antigo `painel.py` continua disponível por compatibilidade, mas deixa
+de ser necessário no fluxo normal porque os dados principais e a foto podem ser
+alterados diretamente no editor visual.
 
 Campos numéricos são quantizados: offsets, tamanhos, tracking e dimensões usam
 pixels inteiros; escalas e opacidades mostram somente as casas previstas pelo
