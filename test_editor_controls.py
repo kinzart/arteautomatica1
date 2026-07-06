@@ -48,6 +48,18 @@ class EditorControlsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "foto não encontrada"):
             editor._validar_foto()
 
+    def test_limita_pan_da_foto_pelo_zoom(self):
+        editor = object.__new__(EditorVisual)
+        editor.current_slot = "foto_artista"
+        editor.vars = {"zoom": SimpleNamespace(get=lambda: "1.2")}
+
+        self.assertEqual(editor._limite_offset_foto("offset_x"), 83)
+        self.assertEqual(editor._limitar_numero_foto("offset_x", 500), 83)
+
+    def test_espelhamento_exige_booleano(self):
+        with self.assertRaisesRegex(ValueError, "true ou false"):
+            carregar_ajustes(self._arquivo({"espelhar_horizontal": "sim"}, "foto_artista"))
+
 
 if __name__ == "__main__":
     unittest.main()

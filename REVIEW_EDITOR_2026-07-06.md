@@ -30,6 +30,12 @@
     e valida JPG/JPEG/PNG/WebP, grava apenas no job temporário, atualiza o
     preview e inclui a troca no histórico. A promoção ao job original continua
     explícita e protegida por backup.
+11. **Pan alterava zoom implicitamente.** O compositor aumentava a escala para
+    criar margem conforme o offset. Agora o zoom é exclusivamente manual e o
+    pan é limitado na borda disponível. A configuração existente foi migrada
+    para o zoom efetivo anterior, preservando o enquadramento.
+12. **Faltava orientação da foto.** `espelhar_horizontal` permite trocar
+    esquerda e direita sem alterar a máscara do PSD.
 
 ## Invariantes preservados
 

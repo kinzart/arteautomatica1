@@ -93,7 +93,7 @@
       "cor": "#C97816"
     },
     "foto_artista": {
-      "zoom": 0.4,
+      "zoom": 1.08,
       "offset_x": -30,
       "offset_y": 0,
       "mascara_offset_x": -40,
@@ -103,6 +103,7 @@
       "mascara_contraste": 1.0,
       "mascara_opacidade": 1.0,
       "mascara_inverter": false,
+      "espelhar_horizontal": false,
       "brilho": 0.93,
       "contraste": 1.08,
       "saturacao": 0.92,

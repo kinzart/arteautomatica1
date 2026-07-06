@@ -21,6 +21,7 @@ CAMPOS_FOTO = {
     "nitidez", "temperatura", "fusao_frac", "mascara_offset_x",
     "mascara_offset_y", "mascara_escala", "mascara_blur",
     "mascara_contraste", "mascara_opacidade", "mascara_inverter",
+    "espelhar_horizontal",
 }
 CAMPOS_GLOBAL = {"grain_opacidade", "bordas_opacidade", "brilho", "contraste", "saturacao"}
 CAMPOS_LINHAS = {"offset_x", "offset_y", "largura_1", "largura_2", "espessura", "cor"}
@@ -78,6 +79,11 @@ def carregar_ajustes(caminho=None):
                     raise ValueError(
                         f"ajustes.{formato}.foto_artista.zoom deve ficar entre 0 e 5; "
                         "use 1.6 para ampliar 60%"
+                    )
+            if slot == "foto_artista" and "espelhar_horizontal" in ajuste:
+                if not isinstance(ajuste["espelhar_horizontal"], bool):
+                    raise ValueError(
+                        f"ajustes.{formato}.foto_artista.espelhar_horizontal deve ser true ou false"
                     )
     return dados
 

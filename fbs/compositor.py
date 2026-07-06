@@ -372,6 +372,8 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
 def ajustar_foto(foto, ajuste):
     """Aplica controles manuais à foto já enquadrada, antes da máscara/PSD."""
     ajuste = ajuste or {}
+    if ajuste.get("espelhar_horizontal", False):
+        foto = ImageOps.mirror(foto)
     largura, altura = foto.size
     zoom = float(ajuste.get("zoom", 1.0))
     offset_x = float(ajuste.get("offset_x", 0))
@@ -383,27 +385,24 @@ def ajustar_foto(foto, ajuste):
             "foto_artista.zoom está alto demais. Use 1.0 para tamanho normal, "
             "1.6 para 60% de ampliação e no máximo 5.0"
         )
-    # Garante margem suficiente para que todo offset solicitado tenha efeito,
-    # sem revelar bordas. Antes, offsets maiores que a margem do zoom eram
-    # silenciosamente limitados pelo crop.
-    zoom = max(
-        zoom,
-        1.0 + 2.0 * abs(offset_x) / largura,
-        1.0 + 2.0 * abs(offset_y) / altura,
-    )
-    if zoom != 1.0:
-        nw, nh = max(1, round(largura * zoom)), max(1, round(altura * zoom))
+    # O fit-cover anterior já é a escala mínima que cobre o viewport. Zoom
+    # abaixo de 1 não pode revelar mais imagem porque esse excedente já foi
+    # recortado. O pan nunca altera a escala: quando acaba a margem disponível,
+    # ele é limitado na borda, como em editores gráficos.
+    zoom_efetivo = max(1.0, zoom)
+    if zoom_efetivo != 1.0:
+        nw, nh = max(1, round(largura * zoom_efetivo)), max(1, round(altura * zoom_efetivo))
         redim = foto.resize((nw, nh), Image.LANCZOS)
-        cx = (nw - largura) / 2 - offset_x
-        cy = (nh - altura) / 2 - offset_y
-        # zoom >= 1 sempre cobre o viewport; recorta diretamente, sem criar
-        # canvas preto intermediário.
+        margem_x = (nw - largura) / 2
+        margem_y = (nh - altura) / 2
+        offset_x = min(max(offset_x, -margem_x), margem_x)
+        offset_y = min(max(offset_y, -margem_y), margem_y)
+        cx = margem_x - offset_x
+        cy = margem_y - offset_y
         left, top = round(cx), round(cy)
         left = min(max(left, 0), nw - largura)
         top = min(max(top, 0), nh - altura)
         foto = redim.crop((left, top, left + largura, top + altura))
-    # Sem zoom não há margem para deslocar sem expor borda; mantenha o cover
-    # intacto. Para pan manual, use zoom > 1.
 
     foto = ImageEnhance.Brightness(foto).enhance(float(ajuste.get("brilho", 1.0)))
     foto = ImageEnhance.Contrast(foto).enhance(float(ajuste.get("contraste", 1.0)))

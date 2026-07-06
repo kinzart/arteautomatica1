@@ -51,6 +51,16 @@ class EditorStateTest(unittest.TestCase):
         self.assertEqual(dados["feed"]["txt_artista"]["cor"], "#FF00AA")
         self.assertEqual(editor_state._ler(self.temporario), dados)
 
+    def test_migra_zoom_implicito_legado(self):
+        with open(self.temporario, "w", encoding="utf-8") as arquivo:
+            json.dump({"feed": {"foto_artista": {
+                "zoom": 0.1, "offset_x": 471, "offset_y": 307,
+            }}}, arquivo)
+
+        dados = editor_state.inicializar_temporario()
+
+        self.assertEqual(dados["feed"]["foto_artista"]["zoom"], 2.14)
+
     def test_restaurar_feed_psd_preserva_outros_formatos(self):
         with open(self.temporario, "w", encoding="utf-8") as arquivo:
             json.dump({

@@ -70,7 +70,7 @@ TEXT_FIELDS = [
     ("cor", None, None, None),
 ]
 PHOTO_FIELDS = [
-    ("zoom", .1, 5, .01), ("offset_x", -600, 600, 1),
+    ("zoom", 1, 5, .01), ("offset_x", -600, 600, 1),
     ("offset_y", -700, 700, 1), ("brilho", 0, 2, .01),
     ("contraste", 0, 2, .01), ("saturacao", 0, 2, .01),
     ("nitidez", 0, 3, .01), ("temperatura", -100, 100, 1),
@@ -78,6 +78,7 @@ PHOTO_FIELDS = [
     ("mascara_offset_x", -600, 600, 1), ("mascara_offset_y", -700, 700, 1),
     ("mascara_escala", .1, 5, .01), ("mascara_contraste", 0, 4, .01),
     ("mascara_inverter", None, None, None),
+    ("espelhar_horizontal", None, None, None),
 ]
 LINE_FIELDS = [
     ("offset_x", -500, 500, 1), ("offset_y", -500, 500, 1),
@@ -99,6 +100,7 @@ DEFAULTS = {
     "nitidez": 1, "temperatura": 0, "mascara_opacidade": 1,
     "mascara_blur": 0, "mascara_offset_x": 0, "mascara_offset_y": 0,
     "mascara_escala": 1, "mascara_contraste": 1, "mascara_inverter": False,
+    "espelhar_horizontal": False,
     "largura_1": 316, "largura_2": 379, "espessura": 2,
     "grain_opacidade": 0, "bordas_opacidade": 0,
 }
@@ -313,6 +315,9 @@ class EditorVisual(tk.Tk):
             else:
                 passo = float(resolucao)
                 numero = self._quantizar(float(valor), passo)
+                if self.current_slot == "foto_artista" and chave == "zoom":
+                    numero = max(1.0, numero)
+                numero = self._limitar_numero_foto(chave, numero)
                 var = tk.StringVar(value=self._formatar_numero(numero, passo))
                 scale_var = tk.DoubleVar(value=numero)
                 widget = ttk.Scale(linha, from_=minimo, to=maximo, variable=scale_var,
@@ -344,6 +349,9 @@ class EditorVisual(tk.Tk):
         if chave in self.field_steps:
             numero = float(str(valor).strip().replace(",", "."))
             numero = self._quantizar(numero, self.field_steps[chave])
+            if self.current_slot == "foto_artista" and chave == "zoom":
+                numero = max(1.0, numero)
+            numero = self._limitar_numero_foto(chave, numero)
             return int(numero) if self.field_steps[chave] >= 1 else numero
         return valor
 
@@ -358,8 +366,44 @@ class EditorVisual(tk.Tk):
         casas = max(1, len(str(passo).rstrip("0").split(".")[-1]))
         return f"{valor:.{casas}f}".rstrip("0").rstrip(".")
 
+    def _limite_offset_foto(self, chave):
+        if self.current_slot != "foto_artista" or chave not in {"offset_x", "offset_y"}:
+            return None
+        try:
+            zoom = max(1.0, float(str(self.vars["zoom"].get()).replace(",", ".")))
+        except (KeyError, ValueError, tk.TclError):
+            zoom = 1.0
+        x1, y1, x2, y2 = SLOT_BBOXES["foto_artista"]
+        dimensao = (x2 - x1) if chave == "offset_x" else (y2 - y1)
+        # Offsets do editor são pixels inteiros; arredondar para baixo impede
+        # que o número exibido ultrapasse a margem física por uma fração.
+        return float(int(dimensao * (zoom - 1.0) / 2.0))
+
+    def _limitar_numero_foto(self, chave, numero):
+        limite = self._limite_offset_foto(chave)
+        if limite is None:
+            return numero
+        return min(max(numero, -limite), limite)
+
+    def _restringir_offsets_foto(self):
+        if self.current_slot != "foto_artista":
+            return
+        for chave in ("offset_x", "offset_y"):
+            if chave not in self.vars:
+                continue
+            try:
+                anterior = float(str(self.vars[chave].get()).replace(",", "."))
+            except ValueError:
+                continue
+            limitado = self._quantizar(self._limitar_numero_foto(chave, anterior), self.field_steps[chave])
+            if limitado != anterior:
+                self.vars[chave].set(self._formatar_numero(limitado, self.field_steps[chave]))
+                self.scale_vars[chave].set(limitado)
+                self.dirty_fields.add(chave)
+
     def _slider_alterado(self, chave, valor, passo):
         numero = self._quantizar(float(valor), passo)
+        numero = self._limitar_numero_foto(chave, numero)
         self.vars[chave].set(self._formatar_numero(numero, passo))
         if abs(self.scale_vars[chave].get() - numero) > passo / 100:
             self.scale_vars[chave].set(numero)
@@ -420,6 +464,8 @@ class EditorVisual(tk.Tk):
             if chave in self.field_steps:
                 self.vars[chave].set(self._formatar_numero(float(valor), self.field_steps[chave]))
                 self.scale_vars[chave].set(float(valor))
+            if chave == "zoom":
+                self._restringir_offsets_foto()
         except (ValueError, tk.TclError) as exc:
             self.status.set(f"Valor inválido: {exc}")
             return
@@ -928,7 +974,7 @@ class EditorVisual(tk.Tk):
 
     def _set_numero_controle(self, chave, valor):
         passo = self.field_steps.get(chave, 1)
-        numero = self._quantizar(valor, passo)
+        numero = self._quantizar(self._limitar_numero_foto(chave, valor), passo)
         self.vars[chave].set(self._formatar_numero(numero, passo))
         if chave in self.scale_vars:
             self.scale_vars[chave].set(numero)

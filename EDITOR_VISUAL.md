@@ -126,6 +126,12 @@ histórico de desfazer/refazer e dispara somente o preview permitido pela
 política selecionada. O arquivo da imagem não é duplicado: o job guarda seu
 caminho relativo ao projeto sempre que possível.
 
+No slot `foto_artista`, **espelhar_horizontal** troca esquerda e direita da
+imagem. `offset_x` e `offset_y` agora fazem somente pan: nunca modificam o zoom.
+Ao atingir a margem disponível, o movimento para; aumente o controle `zoom`
+para liberar mais deslocamento. Isso impede o antigo efeito de ampliar ou
+reduzir a foto enquanto ela era arrastada.
+
 O painel antigo `painel.py` continua disponível por compatibilidade, mas deixa
 de ser necessário no fluxo normal porque os dados principais e a foto podem ser
 alterados diretamente no editor visual.

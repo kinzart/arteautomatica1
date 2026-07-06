@@ -43,6 +43,11 @@ render e participa do mesmo histórico de desfazer/refazer. A promoção para o
 job original ocorre apenas em **Salvar dados/foto no job**, com backup. O
 `painel.py` permanece funcional como interface legada.
 
+Os controles de foto separam escala e movimento: offsets são limitados pela
+margem do zoom atual e nunca ampliam a imagem automaticamente. O slot também
+oferece `espelhar_horizontal`, aplicado somente ao conteúdo da foto e incluído
+no histórico do editor.
+
 Baseline da branch `visual-editor-goldmaster` com `jobs/job_gonzalo.json`:
 testes automatizados e geração passam. Comparação inicial com o gold master:
 diferença média `42.1670/255`, SSIM `0.143064`. Esses números são apenas o ponto
