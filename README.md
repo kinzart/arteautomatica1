@@ -15,7 +15,8 @@ python painel.py
 Para calibrar visualmente slots contra o gold master, abra
 `abrir_editor_visual.bat` ou execute `python editor_visual.py`. Consulte
 `EDITOR_VISUAL.md`; o editor trabalha em arquivo temporário e cria backup antes
-de salvar em `ajustes.json`.
+de salvar em `ajustes.json`. O modo Manual usa guia instantânea e preview rápido
+sem PSD; **Renderizar PSD** fica reservado à validação fiel.
 
 Geração direta:
 

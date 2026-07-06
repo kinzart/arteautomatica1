@@ -23,7 +23,7 @@ O painel original continua disponível em `abrir_painel.bat`.
 
 1. Escolha um job, normalmente `jobs/job_gonzalo.json` para calibração.
 2. Selecione o slot visual.
-3. Escolha a política de render: Manual, Ao soltar ou Automático leve.
+3. Mantenha **Manual — recomendado** para ajuste fino.
 4. Altere sliders/campos ou arraste o elemento; a guia responde imediatamente.
 5. Quando necessário, clique em **Renderizar preview** para validar no PSD.
 6. Compare nos modos Gerado, Referência, Lado a lado, Overlay ou Diff.
@@ -38,18 +38,22 @@ backups/ajustes_YYYY-MM-DD_HHMMSS.json
 
 ## Preview e comparação
 
-O editor tem dois níveis independentes:
+O editor tem três níveis independentes:
 
-- **Preview rápido:** usa o último PNG em memória e move somente a guia verde.
-  Não abre o PSD, não chama `gerar.py` e responde durante drag/slider.
-- **Render real:** salva o temporário e chama `gerar.py --ajustes ...` em uma
+- **Guia instantânea:** move a bounding box verde sobre o PNG em memória. Não
+  abre arquivo nem inicia processo.
+- **Preview rápido sem PSD:** chama `render_fast.py`, usa `cache_preview/` e
+  aproxima foto, textos, crop, máscara, cores e rodapé em cerca de 0,6 s.
+- **Render PSD fiel:** salva o temporário e chama `gerar.py --ajustes ...` em uma
   thread. Somente após terminar o cache do PNG e as métricas são atualizados.
 
 Políticas disponíveis:
 
-- **Manual:** render real apenas no botão.
-- **Ao soltar (padrão):** render uma vez ao soltar drag/slider ou confirmar campo.
-- **Automático leve:** debounce de 1500 ms e no máximo um processo simultâneo.
+- **Manual — recomendado (padrão):** guia instantânea durante o movimento e
+  preview rápido com debounce de 300 ms/ao soltar. Nunca chama o PSD sozinho.
+- **Ao soltar — lento:** render PSD uma vez ao soltar drag/slider.
+- **Automático leve — muito lento:** render PSD com debounce de 1500 ms e no
+  máximo um processo simultâneo.
 
 Se houver mudanças durante uma renderização, o resultado antigo é ignorado. Um
 novo render só é enfileirado quando a política escolhida solicitar.
@@ -67,8 +71,9 @@ fixos que o gerado atual ainda não reproduz, a decisão visual tem prioridade.
 
 Arraste no preview com um slot selecionado para alterar `offset_x` e
 `offset_y`. O deslocamento da tela é convertido para o canvas real 1080×1350.
-Durante o movimento apenas a guia é redesenhada. No modo Manual, soltar não
-renderiza; nos modos Ao soltar/Automático leve ocorre exatamente um render real.
+Durante o movimento apenas a guia é redesenhada. No modo Manual, soltar chama
+somente o preview rápido. Nos modos Ao soltar/Automático leve ocorre um render
+PSD conforme a política selecionada.
 
 O eixo X de mês, dia, semana e hora permanece bloqueado porque esses elementos
 são centralizados automaticamente em `ENTRADA GRATUITA`. O drag ainda permite
@@ -100,8 +105,23 @@ Geração experimental:
 python gerar.py --job jobs/job_gonzalo.json --ajustes ajustes.editor.tmp.json
 ```
 
+Preview rápido sem PSD:
+
+```powershell
+python render_fast.py --job jobs/job_gonzalo.json --ajustes ajustes.editor.tmp.json --out outputs/_fast_preview.png
+```
+
+Se o cache não existir ou o PSD for atualizado:
+
+```powershell
+python preparar_cache_preview.py
+```
+
 Comparação automatizada e diff:
 
 ```powershell
 python comparar_goldmaster.py outputs/fbs27_feed.png
 ```
+
+Photopea não foi integrado nesta etapa: navegador/iframe/API externa criariam
+dependências e latência desnecessárias para o fluxo local.
