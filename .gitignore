@@ -4,4 +4,6 @@ logs/*.log
 outputs/*.png
 outputs/old/
 .pytest_cache/
-
+ajustes.editor.tmp.json
+jobs/job.editor.tmp.json
+backups/*.json

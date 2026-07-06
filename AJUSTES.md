@@ -56,11 +56,15 @@ use `tamanho_max` no lugar de `tamanho`.
 ## Campos de `foto_artista`
 
 - `zoom`: escala manual; `1` mantém, `1.15` amplia 15% e `1.6` amplia 60%.
-  O limite de segurança é `5`; não use porcentagens como `60`.
+  O limite de segurança é `5`; não use porcentagens como `60`. Como a foto já
+  chega em `fit_cover`, valores abaixo de `1` não revelam área adicional.
 - `offset_x`: move a foto em pixels; positivo para a direita.
 - `offset_y`: move a foto em pixels; positivo para baixo.
-- Offsets maiores que a margem disponível aumentam o zoom automaticamente,
-  evitando que o valor seja ignorado ou gere bordas pretas.
+- O pan nunca altera o zoom. Quando o offset atinge a margem disponível para o
+  zoom atual, ele para na borda. Aumente `zoom` explicitamente para ganhar mais
+  espaço de movimento sem revelar bordas vazias.
+- `espelhar_horizontal`: `true` troca esquerda e direita da foto; `false`
+  mantém sua orientação original. A máscara do PSD não é espelhada.
 - `brilho`: multiplicador; `1` mantém, `0.9` escurece, `1.1` clareia.
 - `contraste`: multiplicador; `1` mantém.
 - `saturacao`: multiplicador; `1` mantém e `0` remove a cor.
@@ -82,6 +86,7 @@ Exemplo:
   "zoom": 1.12,
   "offset_x": 20,
   "offset_y": -35,
+  "espelhar_horizontal": true,
   "brilho": 0.95,
   "contraste": 1.15,
   "saturacao": 0.9,

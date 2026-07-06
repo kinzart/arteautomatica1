@@ -337,29 +337,43 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
             bordas = np.asarray(Image.open(bordas_path).convert("L").resize(base.size), dtype=np.float32) / 255
             mask_arr = np.asarray(mascara, dtype=np.float32)
             mask_arr *= 1 - desgaste + desgaste * bordas
-            mascara = Image.fromarray(np.clip(mask_arr, 0, 255).astype(np.uint8), "L")
+            mascara = Image.fromarray(np.clip(mask_arr, 0, 255).astype(np.uint8))
 
-        textura_arr = _textura_para_mascara(textura_path, base.size)
-        cor_misturada = _blend(cor, textura_arr, ajuste.get("textura_blend", "multiply"))
-        textura_opacidade = ajuste.get("textura_opacidade", 0.7)
-        cor_final = np.array(cor, dtype=np.float32) * (1 - textura_opacidade) + cor_misturada * textura_opacidade
-        rgba = np.dstack([np.clip(cor_final, 0, 255).astype(np.uint8), np.array(mascara)])
-        camada = Image.fromarray(rgba, mode="RGBA")
+        if ajuste.get("_preview_fast"):
+            camada = Image.new("RGBA", base.size, (*cor, 0))
+            camada.putalpha(mascara)
+        else:
+            textura_arr = _textura_para_mascara(textura_path, base.size)
+            cor_misturada = _blend(cor, textura_arr, ajuste.get("textura_blend", "multiply"))
+            textura_opacidade = ajuste.get("textura_opacidade", 0.7)
+            cor_final = np.array(cor, dtype=np.float32) * (1 - textura_opacidade) + cor_misturada * textura_opacidade
+            rgba = np.dstack([np.clip(cor_final, 0, 255).astype(np.uint8), np.array(mascara)])
+            camada = Image.fromarray(rgba, mode="RGBA")
         base.alpha_composite(camada)
     else:
-        draw = ImageDraw.Draw(base)
+        # Desenhar alpha diretamente em uma imagem RGBA apenas substitui os
+        # bytes do pixel; ao converter para RGB a opacidade era perdida.
+        # Componha uma camada transparente para que `opacidade` tenha efeito real.
+        camada = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(camada)
         topo_linha = y
         for linha in linhas:
-            fill = (*cor, opacidade) if base.mode == "RGBA" else cor
+            fill = (*cor, opacidade)
             bearing_linha = _MEDIDOR.textbbox((0, 0), linha, font=fonte)[1]
             util.draw_text_tracked(draw, (x_da_linha(linha), topo_linha - bearing_linha), linha, fonte, fill, tracking)
             topo_linha += altura_linha
+        if base.mode == "RGBA":
+            base.alpha_composite(camada)
+        else:
+            base.paste(camada.convert("RGB"), (0, 0), camada.getchannel("A"))
     return base
 
 
 def ajustar_foto(foto, ajuste):
     """Aplica controles manuais à foto já enquadrada, antes da máscara/PSD."""
     ajuste = ajuste or {}
+    if ajuste.get("espelhar_horizontal", False):
+        foto = ImageOps.mirror(foto)
     largura, altura = foto.size
     zoom = float(ajuste.get("zoom", 1.0))
     offset_x = float(ajuste.get("offset_x", 0))
@@ -371,27 +385,24 @@ def ajustar_foto(foto, ajuste):
             "foto_artista.zoom está alto demais. Use 1.0 para tamanho normal, "
             "1.6 para 60% de ampliação e no máximo 5.0"
         )
-    # Garante margem suficiente para que todo offset solicitado tenha efeito,
-    # sem revelar bordas. Antes, offsets maiores que a margem do zoom eram
-    # silenciosamente limitados pelo crop.
-    zoom = max(
-        zoom,
-        1.0 + 2.0 * abs(offset_x) / largura,
-        1.0 + 2.0 * abs(offset_y) / altura,
-    )
-    if zoom != 1.0:
-        nw, nh = max(1, round(largura * zoom)), max(1, round(altura * zoom))
+    # O fit-cover anterior já é a escala mínima que cobre o viewport. Zoom
+    # abaixo de 1 não pode revelar mais imagem porque esse excedente já foi
+    # recortado. O pan nunca altera a escala: quando acaba a margem disponível,
+    # ele é limitado na borda, como em editores gráficos.
+    zoom_efetivo = max(1.0, zoom)
+    if zoom_efetivo != 1.0:
+        nw, nh = max(1, round(largura * zoom_efetivo)), max(1, round(altura * zoom_efetivo))
         redim = foto.resize((nw, nh), Image.LANCZOS)
-        cx = (nw - largura) / 2 - offset_x
-        cy = (nh - altura) / 2 - offset_y
-        # zoom >= 1 sempre cobre o viewport; recorta diretamente, sem criar
-        # canvas preto intermediário.
+        margem_x = (nw - largura) / 2
+        margem_y = (nh - altura) / 2
+        offset_x = min(max(offset_x, -margem_x), margem_x)
+        offset_y = min(max(offset_y, -margem_y), margem_y)
+        cx = margem_x - offset_x
+        cy = margem_y - offset_y
         left, top = round(cx), round(cy)
         left = min(max(left, 0), nw - largura)
         top = min(max(top, 0), nh - altura)
         foto = redim.crop((left, top, left + largura, top + altura))
-    # Sem zoom não há margem para deslocar sem expor borda; mantenha o cover
-    # intacto. Para pan manual, use zoom > 1.
 
     foto = ImageEnhance.Brightness(foto).enhance(float(ajuste.get("brilho", 1.0)))
     foto = ImageEnhance.Contrast(foto).enhance(float(ajuste.get("contraste", 1.0)))
@@ -402,7 +413,7 @@ def ajustar_foto(foto, ajuste):
         arr = np.asarray(foto).astype(np.float32)
         arr[..., 0] *= 1 + temperatura / 100
         arr[..., 2] *= 1 - temperatura / 100
-        foto = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB")
+        foto = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
     return foto
 
 

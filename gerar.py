@@ -142,6 +142,8 @@ def main():
     parser = argparse.ArgumentParser(description="Gerador de artes FBS (PSD-driven)")
     parser.add_argument("--job", default=os.path.join("jobs", "job.json"),
                          help="caminho do job.json (default: jobs/job.json)")
+    parser.add_argument("--ajustes", default=None,
+                        help="arquivo de ajustes alternativo (default: ajustes.json)")
     args = parser.parse_args()
 
     logger = util.configurar_log()
@@ -165,7 +167,7 @@ def main():
         artista_txt = job["artista"]
 
         os.makedirs(config.OUTPUTS_DIR, exist_ok=True)
-        ajustes = ajustes_mod.carregar_ajustes()
+        ajustes = ajustes_mod.carregar_ajustes(args.ajustes)
 
         resultados = {}
         tempos = {}

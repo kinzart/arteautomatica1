@@ -1,0 +1,215 @@
+{
+  "canvas": [
+    1080,
+    1350
+  ],
+  "foto_bbox": [
+    172,
+    45,
+    1003,
+    1181
+  ],
+  "slots": {
+    "txt_data_dia": {
+      "slot": "txt_data_dia",
+      "bbox": [
+        891,
+        133,
+        1033,
+        233
+      ],
+      "kind": "type",
+      "opacity": 255,
+      "text": "07",
+      "tracking": 20.0,
+      "cor_rgb": [
+        200,
+        151,
+        91
+      ]
+    },
+    "txt_data_semana": {
+      "slot": "txt_data_semana",
+      "bbox": [
+        890,
+        252,
+        1037,
+        294
+      ],
+      "kind": "type",
+      "opacity": 255,
+      "text": "TERÇA",
+      "tracking": 20.0,
+      "cor_rgb": [
+        255,
+        169,
+        0
+      ]
+    },
+    "txt_data_hora": {
+      "slot": "txt_data_hora",
+      "bbox": [
+        893,
+        299,
+        1039,
+        340
+      ],
+      "kind": "type",
+      "opacity": 255,
+      "text": "19:00",
+      "tracking": -40.0,
+      "cor_rgb": [
+        255,
+        170,
+        0
+      ]
+    },
+    "txt_data_mes": {
+      "slot": "txt_data_mes",
+      "bbox": [
+        885,
+        70,
+        1036,
+        127
+      ],
+      "kind": "type",
+      "opacity": 255,
+      "text": "JUL",
+      "tracking": 20.0,
+      "cor_rgb": [
+        195,
+        145,
+        86
+      ]
+    },
+    "txt_edicao": {
+      "slot": "txt_edicao",
+      "bbox": [
+        57,
+        248,
+        263,
+        272
+      ],
+      "kind": "type",
+      "opacity": 255,
+      "text": "CONVIDA #28",
+      "tracking": 20.0,
+      "cor_rgb": [
+        197,
+        192,
+        191
+      ]
+    },
+    "txt_artista": {
+      "slot": "txt_artista",
+      "bbox": [
+        56,
+        288,
+        502,
+        633
+      ],
+      "kind": "type",
+      "opacity": 255,
+      "text": "GONZALO\rARAYA",
+      "tracking": 20.0,
+      "cor_rgb": [
+        215,
+        175,
+        128
+      ]
+    },
+    "txt_local_endereco": {
+      "slot": "txt_local_endereco",
+      "bbox": [
+        54,
+        1267,
+        663,
+        1289
+      ],
+      "kind": "type",
+      "opacity": 255,
+      "text": "R MANOEL PEDRO VIEIRA, 1255 - FLORIANÓPOLIS - SC",
+      "tracking": 20.0,
+      "cor_rgb": [
+        255,
+        255,
+        255
+      ]
+    },
+    "txt_local_nome": {
+      "slot": "txt_local_nome",
+      "bbox": [
+        54,
+        1197,
+        333,
+        1252
+      ],
+      "kind": "type",
+      "opacity": 255,
+      "text": "TIO GETHER’S",
+      "tracking": 20.0,
+      "cor_rgb": [
+        200,
+        155,
+        102
+      ]
+    },
+    "txt_local_bairro": {
+      "slot": "txt_local_bairro",
+      "bbox": [
+        418,
+        1197,
+        791,
+        1251
+      ],
+      "kind": "type",
+      "opacity": 255,
+      "text": "MORRO DAS PEDRAS",
+      "tracking": 20.0,
+      "cor_rgb": [
+        203,
+        158,
+        106
+      ]
+    }
+  },
+  "fixos": {
+    "logo_bbox": [
+      62,
+      55,
+      256,
+      218
+    ],
+    "floripa_xy": [
+      200,
+      50
+    ],
+    "entrada_bbox": [
+      897,
+      361,
+      1039,
+      414
+    ],
+    "banda_bbox": [
+      53,
+      665,
+      444,
+      722
+    ],
+    "linhas": [
+      [
+        53,
+        1167,
+        369,
+        1170
+      ],
+      [
+        408,
+        1166,
+        787,
+        1171
+      ]
+    ]
+  },
+  "psd_mtime": 1783185460.0845122
+}
