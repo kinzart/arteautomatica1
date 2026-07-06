@@ -73,6 +73,18 @@ def restaurar_do_principal():
     return inicializar_temporario(forcar=True)
 
 
+def substituir_temporario(dados):
+    _salvar_atomico(AJUSTES_TEMP, dados)
+    return _ler(AJUSTES_TEMP)
+
+
+def restaurar_feed_psd():
+    """Remove overrides do feed; o próximo render herda a geometria do PSD."""
+    dados = carregar_temporario()
+    dados["feed"] = {}
+    return substituir_temporario(dados)
+
+
 def atualizar_slot(formato, slot, alteracoes):
     dados = carregar_temporario()
     destino = dados.setdefault(formato, {}).setdefault(slot, {})

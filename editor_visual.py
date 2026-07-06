@@ -16,7 +16,7 @@ from tkinter import colorchooser, filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 import numpy as np
 
-from fbs import editor_state
+from fbs import editor_history, editor_state
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 GOLDMASTER = os.path.join(ROOT, "assets", "referencias", "fbs_goldmaster.png")
@@ -114,6 +114,7 @@ class EditorVisual(tk.Tk):
         self.estado = editor_state.carregar_temporario()
         self.job_path = tk.StringVar(value=os.path.join("jobs", "job_gonzalo.json"))
         self._preparar_job_temporario(force=False)
+        self.historico = editor_history.HistoricoEditor(self._capturar_snapshot())
         self.slot = tk.StringVar(value="txt_artista")
         self.modo = tk.StringVar(value="Gerado")
         self.overlay_alpha = tk.DoubleVar(value=.5)
@@ -150,6 +151,8 @@ class EditorVisual(tk.Tk):
         self._cached_metrics = ""
         self._render_queue = queue.Queue()
         self._fast_queue = queue.Queue()
+        self.undo_button = None
+        self.redo_button = None
         self._montar()
         self._reconstruir_controles()
         self._recarregar_gerado(force=True)
@@ -172,6 +175,21 @@ class EditorVisual(tk.Tk):
                      state="readonly", width=29).pack(side="left")
         ttk.Button(topo, text="Preview rápido", command=self.render_preview_fast).pack(side="left", padx=(8, 0))
         ttk.Button(topo, text="Renderizar PSD", command=self.render_preview_real).pack(side="left", padx=(5, 0))
+
+        historico_bar = ttk.Frame(self, padding=(10, 0, 10, 7))
+        historico_bar.pack(fill="x")
+        self.undo_button = ttk.Button(historico_bar, text="↶ Desfazer  Ctrl+Z", command=self._desfazer)
+        self.undo_button.pack(side="left")
+        self.redo_button = ttk.Button(historico_bar, text="↷ Refazer  Ctrl+Shift+Z", command=self._refazer)
+        self.redo_button.pack(side="left", padx=(5, 0))
+        ttk.Button(historico_bar, text="Voltar ao PSD original…",
+                   command=self._voltar_psd_original).pack(side="left", padx=(16, 0))
+        ttk.Label(historico_bar, text="Histórico desta sessão: ajustes + textos temporários.",
+                  foreground="#606060").pack(side="left", padx=(12, 0))
+        self.bind_all("<Control-z>", self._desfazer)
+        self.bind_all("<Control-Shift-Z>", self._refazer)
+        self.bind_all("<Control-y>", self._refazer)
+        self._atualizar_botoes_historico()
 
         corpo = ttk.Panedwindow(self, orient="horizontal")
         corpo.pack(fill="both", expand=True, padx=10, pady=(0, 8))
@@ -356,9 +374,10 @@ class EditorVisual(tk.Tk):
         if alteracoes:
             editor_state.atualizar_slot("feed", slot, alteracoes)
         if self.content_dirty:
-            self._salvar_conteudo_temporario()
+            self._salvar_conteudo_temporario(registrar=False)
         self.estado = editor_state.carregar_temporario()
         self.dirty_fields.clear()
+        self._registrar_historico()
         self.status.set("Ajustes temporários salvos.")
         return True
 
@@ -412,6 +431,7 @@ class EditorVisual(tk.Tk):
         if caminho:
             self.job_path.set(os.path.relpath(caminho, ROOT))
             self._preparar_job_temporario(force=True)
+            self._reiniciar_historico()
             self._reconstruir_controles()
             self._recarregar_gerado(force=True)
             self._mostrar_preview()
@@ -422,6 +442,69 @@ class EditorVisual(tk.Tk):
 
     def _job_absoluto(self):
         return JOB_TEMP_PATH
+
+    def _capturar_snapshot(self):
+        return {
+            "ajustes": editor_state.carregar_temporario(),
+            "job": self._carregar_job_temporario(),
+        }
+
+    def _reiniciar_historico(self):
+        self.historico = editor_history.HistoricoEditor(self._capturar_snapshot())
+        self._atualizar_botoes_historico()
+
+    def _registrar_historico(self):
+        alterou = self.historico.registrar(self._capturar_snapshot())
+        self._atualizar_botoes_historico()
+        return alterou
+
+    def _atualizar_botoes_historico(self):
+        if self.undo_button is not None:
+            self.undo_button.configure(state="normal" if self.historico.pode_desfazer else "disabled")
+        if self.redo_button is not None:
+            self.redo_button.configure(state="normal" if self.historico.pode_refazer else "disabled")
+
+    def _aplicar_snapshot(self, snapshot, acao):
+        if self.debounce_id:
+            self.after_cancel(self.debounce_id)
+            self.debounce_id = None
+        self.estado = editor_state.substituir_temporario(snapshot["ajustes"])
+        self._salvar_json_atomico(JOB_TEMP_PATH, snapshot["job"])
+        self.dirty_fields.clear()
+        self.content_dirty = False
+        self.change_version += 1
+        self._reconstruir_controles()
+        self._atualizar_botoes_historico()
+        self.render_preview_fast()
+        self.status.set(f"{acao} — render PSD pendente.")
+
+    def _desfazer(self, _evento=None):
+        try:
+            self._salvar_campos()
+        except ValueError as exc:
+            self.status.set(f"Não foi possível desfazer: {exc}")
+            return "break"
+        snapshot = self.historico.desfazer()
+        if snapshot is None:
+            self.status.set("Nada para desfazer.")
+        else:
+            self._aplicar_snapshot(snapshot, "Alteração desfeita")
+        self._atualizar_botoes_historico()
+        return "break"
+
+    def _refazer(self, _evento=None):
+        try:
+            self._salvar_campos()
+        except ValueError as exc:
+            self.status.set(f"Não foi possível refazer: {exc}")
+            return "break"
+        snapshot = self.historico.refazer()
+        if snapshot is None:
+            self.status.set("Nada para refazer.")
+        else:
+            self._aplicar_snapshot(snapshot, "Alteração refeita")
+        self._atualizar_botoes_historico()
+        return "break"
 
     @staticmethod
     def _salvar_json_atomico(caminho, dados):
@@ -472,13 +555,15 @@ class EditorVisual(tk.Tk):
                 raise ValueError("data deve usar AAAA-MM-DD") from exc
         return valor
 
-    def _salvar_conteudo_temporario(self):
+    def _salvar_conteudo_temporario(self, registrar=True):
         valor = self._validar_conteudo()
         if self.content_key and valor is not None:
             dados = self._carregar_job_temporario()
             dados[self.content_key] = valor
             self._salvar_json_atomico(JOB_TEMP_PATH, dados)
         self.content_dirty = False
+        if registrar:
+            self._registrar_historico()
 
     def _conteudo_digitado(self, _evento=None):
         self.content_dirty = True
@@ -797,8 +882,32 @@ class EditorVisual(tk.Tk):
     def _restaurar(self):
         if messagebox.askyesno("Restaurar", "Descartar temporários e recarregar ajustes.json?"):
             self.estado = editor_state.restaurar_do_principal()
+            self._registrar_historico()
             self._reconstruir_controles()
             self.status.set("Temporário restaurado do ajustes.json.")
+            self.render_preview_fast()
+
+    def _voltar_psd_original(self):
+        mensagem = (
+            "Remover todos os ajustes visuais temporários do feed e voltar às "
+            "medidas/posições herdadas do PSD?\n\n"
+            "ajustes.json e o job original NÃO serão alterados. "
+            "Os textos temporários serão preservados e esta ação poderá ser "
+            "desfeita com Ctrl+Z."
+        )
+        if not messagebox.askyesno("Voltar ao PSD original", mensagem, icon="warning"):
+            return
+        try:
+            self._salvar_campos()
+        except ValueError as exc:
+            messagebox.showerror("Ajustes inválidos", str(exc))
+            return
+        self.estado = editor_state.restaurar_feed_psd()
+        self._registrar_historico()
+        self._reconstruir_controles()
+        self.change_version += 1
+        self.render_preview_fast()
+        self.status.set("Overrides do feed removidos — PSD original; Ctrl+Z para desfazer.")
 
     def _backup(self):
         backup = editor_state.criar_backup()

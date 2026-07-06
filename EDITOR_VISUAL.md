@@ -79,12 +79,32 @@ O eixo X de mês, dia, semana e hora permanece bloqueado porque esses elementos
 são centralizados automaticamente em `ENTRADA GRATUITA`. O drag ainda permite
 ajuste vertical desses slots.
 
+## Desfazer, refazer e voltar ao PSD
+
+- **Ctrl+Z** ou o botão **Desfazer** volta uma alteração.
+- **Ctrl+Shift+Z** ou o botão **Refazer** avança novamente. **Ctrl+Y** também é
+  aceito.
+- O histórico guarda até 100 estados desta sessão e inclui, no mesmo estado,
+  os ajustes visuais e os textos do job temporário.
+- Uma edição ainda não renderizada também entra no histórico ao desfazer.
+- Fazer uma nova alteração depois de desfazer elimina a sequência antiga de
+  refazer, como em editores gráficos.
+
+**Voltar ao PSD original…** pede confirmação e remove todos os overrides
+visuais temporários do `feed`. Assim, o próximo render herda posições, medidas
+e estilo-base do PSD. A ação não altera `ajustes.json`, não altera o job
+original, preserva os textos temporários e pode ser desfeita com **Ctrl+Z**.
+
+Isso é diferente de **Restaurar do ajustes.json**, que retorna à configuração
+aprovada atualmente no projeto, e não ao estado sem overrides do PSD.
+
 ## Arquivos e segurança
 
 - `ajustes.json`: configuração aprovada e usada na geração final.
 - `ajustes.editor.tmp.json`: experimentos do editor.
 - `backups/`: cópias automáticas anteriores a cada salvamento final.
 - **Restaurar do ajustes.json:** descarta o temporário atual após confirmação.
+- **Voltar ao PSD original:** limpa somente os overrides temporários do feed.
 - **Criar backup agora:** copia o arquivo principal sem alterá-lo.
 - **Gerar imagem final:** usa `ajustes.json`, não o temporário.
 - `jobs/job.editor.tmp.json`: conteúdo textual experimental.

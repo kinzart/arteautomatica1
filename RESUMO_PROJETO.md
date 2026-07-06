@@ -31,6 +31,12 @@ e validação, e opacidade de texto sólido usa composição alpha real. Erros d
 render mostram a causa resumida em vez do traceback completo. Detalhes e
 limitações estão em `REVIEW_EDITOR_2026-07-06.md`.
 
+O editor possui histórico em memória de 100 estados completos. `Ctrl+Z`
+desfaz, `Ctrl+Shift+Z`/`Ctrl+Y` refaz, incluindo ajustes e conteúdo textual
+temporário. **Voltar ao PSD original** limpa apenas os overrides do feed após
+confirmação; não altera arquivos principais e o reset também é reversível pelo
+histórico.
+
 Baseline da branch `visual-editor-goldmaster` com `jobs/job_gonzalo.json`:
 testes automatizados e geração passam. Comparação inicial com o gold master:
 diferença média `42.1670/255`, SSIM `0.143064`. Esses números são apenas o ponto

@@ -20,6 +20,12 @@
    final relevante.
 7. **Temporários antigos podiam guardar `#RGB`.** A abertura agora migra esse
    formato automaticamente para `#RRGGBB`, sem perder os demais ajustes.
+8. **Faltava histórico de edição.** Ajustes e textos temporários agora formam
+   snapshots conjuntos: `Ctrl+Z` desfaz e `Ctrl+Shift+Z`/`Ctrl+Y` refaz até 100
+   estados durante a sessão.
+9. **Não havia retorno real ao PSD.** O novo comando confirmado remove os
+   overrides temporários do feed, preserva textos e arquivos principais e pode
+   ser desfeito imediatamente.
 
 ## Invariantes preservados
 

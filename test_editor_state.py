@@ -51,6 +51,18 @@ class EditorStateTest(unittest.TestCase):
         self.assertEqual(dados["feed"]["txt_artista"]["cor"], "#FF00AA")
         self.assertEqual(editor_state._ler(self.temporario), dados)
 
+    def test_restaurar_feed_psd_preserva_outros_formatos(self):
+        with open(self.temporario, "w", encoding="utf-8") as arquivo:
+            json.dump({
+                "feed": {"txt_artista": {"tamanho": 120}},
+                "story": {"txt_artista": {"tamanho": 80}},
+            }, arquivo)
+
+        dados = editor_state.restaurar_feed_psd()
+
+        self.assertEqual(dados["feed"], {})
+        self.assertEqual(dados["story"]["txt_artista"]["tamanho"], 80)
+
 
 if __name__ == "__main__":
     unittest.main()
