@@ -19,6 +19,10 @@ from fbs import editor_state
 ROOT = os.path.dirname(os.path.abspath(__file__))
 GOLDMASTER = os.path.join(ROOT, "assets", "referencias", "fbs_goldmaster.png")
 CANVAS_W, CANVAS_H = 1080, 1350
+POLICY_MANUAL = "Manual — recomendado"
+POLICY_RELEASE = "Ao soltar — lento"
+POLICY_AUTO = "Automático leve — muito lento"
+FAST_PREVIEW_PATH = os.path.join(ROOT, "outputs", "_fast_preview.png")
 
 SLOT_BBOXES = {
     "foto_artista": (172, 45, 1003, 1181),
@@ -97,7 +101,7 @@ class EditorVisual(tk.Tk):
         self.slot = tk.StringVar(value="txt_artista")
         self.modo = tk.StringVar(value="Gerado")
         self.overlay_alpha = tk.DoubleVar(value=.5)
-        self.politica_render = tk.StringVar(value="Ao soltar")
+        self.politica_render = tk.StringVar(value=POLICY_MANUAL)
         self.status = tk.StringVar(value="Pronto. Ajustes são gravados apenas no arquivo temporário.")
         self.metricas = tk.StringVar(value="")
         self.vars = {}
@@ -113,6 +117,10 @@ class EditorVisual(tk.Tk):
         self.render_running = False
         self.render_pending = False
         self.render_version = 0
+        self.fast_running = False
+        self.fast_pending = False
+        self.fast_version = 0
+        self.preview_epoch = 0
         self.change_version = 0
         self._cached_reference = Image.open(GOLDMASTER).convert("RGB").copy() if os.path.isfile(GOLDMASTER) else None
         self._cached_generated = None
@@ -120,6 +128,7 @@ class EditorVisual(tk.Tk):
         self._cached_output_path = None
         self._cached_metrics = ""
         self._render_queue = queue.Queue()
+        self._fast_queue = queue.Queue()
         self._montar()
         self._reconstruir_controles()
         self._recarregar_gerado(force=True)
@@ -138,9 +147,10 @@ class EditorVisual(tk.Tk):
         combo.bind("<<ComboboxSelected>>", self._trocar_slot)
         ttk.Label(topo, text="Render:").pack(side="left", padx=(14, 4))
         ttk.Combobox(topo, textvariable=self.politica_render,
-                     values=("Manual", "Ao soltar", "Automático leve"),
-                     state="readonly", width=17).pack(side="left")
-        ttk.Button(topo, text="Renderizar preview", command=self.render_preview_real).pack(side="left", padx=(8, 0))
+                     values=(POLICY_MANUAL, POLICY_RELEASE, POLICY_AUTO),
+                     state="readonly", width=29).pack(side="left")
+        ttk.Button(topo, text="Preview rápido", command=self.render_preview_fast).pack(side="left", padx=(8, 0))
+        ttk.Button(topo, text="Renderizar PSD", command=self.render_preview_real).pack(side="left", padx=(5, 0))
 
         corpo = ttk.Panedwindow(self, orient="horizontal")
         corpo.pack(fill="both", expand=True, padx=10, pady=(0, 8))
@@ -165,6 +175,8 @@ class EditorVisual(tk.Tk):
         self.canvas.bind("<ButtonPress-1>", self._drag_inicio)
         self.canvas.bind("<B1-Motion>", self._drag_movimento)
         self.canvas.bind("<ButtonRelease-1>", self._drag_fim)
+        ttk.Label(esquerda, text="Render PSD leva ~15s. Use Manual para calibrar rápido.",
+                  foreground="#a06000").pack(fill="x", pady=(4, 0))
 
         self.controls_canvas = tk.Canvas(direita, highlightthickness=0)
         scroll = ttk.Scrollbar(direita, orient="vertical", command=self.controls_canvas.yview)
@@ -264,17 +276,27 @@ class EditorVisual(tk.Tk):
         self.change_version += 1
         self.status.set("Preview rápido — render real pendente.")
         self.update_fast_overlay()
-        if self.politica_render.get() == "Automático leve":
+        politica = self.politica_render.get()
+        if politica == POLICY_AUTO:
             if self.debounce_id:
                 self.after_cancel(self.debounce_id)
             self.debounce_id = self.after(1500, self.render_preview_real)
+        elif politica == POLICY_MANUAL:
+            if self.debounce_id:
+                self.after_cancel(self.debounce_id)
+            self.debounce_id = self.after(300, self.render_preview_fast)
 
     def _controle_solto(self, chave):
         self._campo_alterado(chave)
-        if self.politica_render.get() == "Ao soltar":
+        politica = self.politica_render.get()
+        if politica == POLICY_RELEASE:
             if self.debounce_id:
                 self.after_cancel(self.debounce_id)
             self.debounce_id = self.after(50, self.render_preview_real)
+        elif politica == POLICY_MANUAL:
+            if self.debounce_id:
+                self.after_cancel(self.debounce_id)
+            self.debounce_id = self.after(50, self.render_preview_fast)
 
     def _trocar_slot(self, _evento=None):
         self._salvar_campos(self.current_slot)
@@ -300,6 +322,36 @@ class EditorVisual(tk.Tk):
         except Exception:
             return None
 
+    def render_preview_fast(self):
+        """Render aproximado sem PSD em processo de background."""
+        try:
+            self._salvar_campos()
+        except Exception as exc:
+            messagebox.showerror("Ajustes inválidos", str(exc))
+            return
+        versao = self.change_version
+        if self.fast_running:
+            self.fast_pending = True
+            self.status.set("Preview rápido pendente…")
+            return
+        self.fast_running = True
+        self.fast_version = versao
+        self.preview_epoch += 1
+        epoch = self.preview_epoch
+        self.status.set("Gerando preview rápido…")
+        job_absoluto = self._job_absoluto()
+        ajustes_temporarios = editor_state.AJUSTES_TEMP
+
+        def executar():
+            proc = subprocess.run(
+                [sys.executable, "render_fast.py", "--job", job_absoluto,
+                 "--ajustes", ajustes_temporarios, "--out", FAST_PREVIEW_PATH],
+                cwd=ROOT, capture_output=True, text=True,
+            )
+            self._fast_queue.put((versao, epoch, proc))
+
+        threading.Thread(target=executar, daemon=True).start()
+
     def render_preview_real(self):
         """Render PSD real em background; nunca é chamado por tick de slider."""
         try:
@@ -314,6 +366,7 @@ class EditorVisual(tk.Tk):
             return
         self.render_version = versao
         self.render_running = True
+        self.preview_epoch += 1  # invalida preview rápido anterior
         self.status.set("Renderizando PSD…")
         job_absoluto = self._job_absoluto()
         ajustes_temporarios = editor_state.AJUSTES_TEMP
@@ -336,9 +389,30 @@ class EditorVisual(tk.Tk):
         except queue.Empty:
             pass
         try:
+            while True:
+                versao, epoch, processo = self._fast_queue.get_nowait()
+                self._fast_concluido(versao, epoch, processo)
+        except queue.Empty:
+            pass
+        try:
             self.after(100, self._poll_render_queue)
         except tk.TclError:
             pass
+
+    def _fast_concluido(self, versao, epoch, processo):
+        self.fast_running = False
+        if processo.returncode != 0:
+            self.status.set("Falha no preview rápido.")
+            messagebox.showerror("Erro no preview rápido", processo.stderr or processo.stdout)
+        elif versao == self.change_version and epoch == self.preview_epoch:
+            self._recarregar_gerado(force=True, caminho=FAST_PREVIEW_PATH, atualizar_metricas=False)
+            self.status.set("Preview rápido atualizado — validação PSD pendente.")
+            self._mostrar_preview()
+        else:
+            self.status.set("Preview rápido ignorado: existe mudança mais recente.")
+        if self.fast_pending:
+            self.fast_pending = False
+            self.render_preview_fast()
 
     def _render_concluido(self, versao, processo):
         self.render_running = False
@@ -355,8 +429,8 @@ class EditorVisual(tk.Tk):
             self.render_pending = False
             self.render_preview_real()
 
-    def _recarregar_gerado(self, force=False):
-        caminho = self._output_path()
+    def _recarregar_gerado(self, force=False, caminho=None, atualizar_metricas=True):
+        caminho = caminho or self._output_path()
         if caminho and os.path.isfile(caminho) and (force or caminho != self._cached_output_path):
             self._cached_generated = Image.open(caminho).convert("RGB").copy()
             self._cached_output_path = caminho
@@ -364,7 +438,10 @@ class EditorVisual(tk.Tk):
                 self._cached_reference.resize(self._cached_generated.size, Image.LANCZOS)
                 if self._cached_reference else None
             )
-            self._atualizar_metricas_cache()
+            if atualizar_metricas:
+                self._atualizar_metricas_cache()
+            else:
+                self._cached_metrics = ""
 
     def _atualizar_metricas_cache(self):
         if self._cached_generated is None or self._cached_ref_resized is None:
@@ -492,10 +569,12 @@ class EditorVisual(tk.Tk):
             return
         self.drag_start = None
         self._salvar_campos()
-        if self.politica_render.get() in ("Ao soltar", "Automático leve"):
+        politica = self.politica_render.get()
+        if politica in (POLICY_RELEASE, POLICY_AUTO):
             self.render_preview_real()
         else:
-            self.status.set("Render real pendente — clique em Renderizar preview.")
+            self.status.set("Render real pendente — clique em Renderizar PSD.")
+            self.render_preview_fast()
 
     def _salvar_principal(self):
         self._salvar_campos()
