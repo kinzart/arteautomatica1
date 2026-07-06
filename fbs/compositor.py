@@ -351,13 +351,21 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
             camada = Image.fromarray(rgba, mode="RGBA")
         base.alpha_composite(camada)
     else:
-        draw = ImageDraw.Draw(base)
+        # Desenhar alpha diretamente em uma imagem RGBA apenas substitui os
+        # bytes do pixel; ao converter para RGB a opacidade era perdida.
+        # Componha uma camada transparente para que `opacidade` tenha efeito real.
+        camada = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(camada)
         topo_linha = y
         for linha in linhas:
-            fill = (*cor, opacidade) if base.mode == "RGBA" else cor
+            fill = (*cor, opacidade)
             bearing_linha = _MEDIDOR.textbbox((0, 0), linha, font=fonte)[1]
             util.draw_text_tracked(draw, (x_da_linha(linha), topo_linha - bearing_linha), linha, fonte, fill, tracking)
             topo_linha += altura_linha
+        if base.mode == "RGBA":
+            base.alpha_composite(camada)
+        else:
+            base.paste(camada.convert("RGB"), (0, 0), camada.getchannel("A"))
     return base
 
 

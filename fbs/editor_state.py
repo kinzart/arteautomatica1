@@ -34,10 +34,35 @@ def _salvar_atomico(caminho, dados):
             os.unlink(temporario)
 
 
+def _normalizar_cores(dados):
+    """Migra cores digitadas no formato CSS curto sem perder o temporário."""
+    resultado = copy.deepcopy(dados)
+    for slots in resultado.values():
+        if not isinstance(slots, dict):
+            continue
+        for ajuste in slots.values():
+            if not isinstance(ajuste, dict):
+                continue
+            cor = ajuste.get("cor")
+            if isinstance(cor, str):
+                cor = cor.strip().upper()
+                if len(cor) == 4 and cor.startswith("#"):
+                    cor = "#" + "".join(c * 2 for c in cor[1:])
+                ajuste["cor"] = cor
+    return resultado
+
+
 def inicializar_temporario(forcar=False):
     if forcar or not os.path.isfile(AJUSTES_TEMP):
         _salvar_atomico(AJUSTES_TEMP, _ler(AJUSTES_PRINCIPAL))
-    return _ler(AJUSTES_TEMP)
+    dados = _ler(AJUSTES_TEMP)
+    normalizados = _normalizar_cores(dados)
+    if normalizados != dados:
+        _salvar_atomico(AJUSTES_TEMP, normalizados)
+    else:
+        # Detecta temporários inválidos já na abertura, antes de iniciar render.
+        ajustes_mod.carregar_ajustes(AJUSTES_TEMP)
+    return normalizados
 
 
 def carregar_temporario():

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
+import datetime as dt
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from PIL import Image, ImageTk
 import numpy as np
@@ -23,6 +25,19 @@ POLICY_MANUAL = "Manual — recomendado"
 POLICY_RELEASE = "Ao soltar — lento"
 POLICY_AUTO = "Automático leve — muito lento"
 FAST_PREVIEW_PATH = os.path.join(ROOT, "outputs", "_fast_preview.png")
+JOB_TEMP_PATH = os.path.join(ROOT, "jobs", "job.editor.tmp.json")
+
+SLOT_JOB_FIELDS = {
+    "txt_artista": ("artista", "Nome do artista"),
+    "txt_edicao": ("edicao", "Edição"),
+    "txt_data_mes": ("data", "Data (AAAA-MM-DD)"),
+    "txt_data_dia": ("data", "Data (AAAA-MM-DD)"),
+    "txt_data_semana": ("data", "Data (AAAA-MM-DD)"),
+    "txt_data_hora": ("hora", "Hora"),
+    "txt_local_nome": ("local_nome", "Nome do local"),
+    "txt_local_bairro": ("local_bairro", "Bairro"),
+    "txt_local_endereco": ("local_endereco", "Endereço"),
+}
 
 SLOT_BBOXES = {
     "foto_artista": (172, 45, 1003, 1181),
@@ -98,6 +113,7 @@ class EditorVisual(tk.Tk):
         editor_state.inicializar_temporario()
         self.estado = editor_state.carregar_temporario()
         self.job_path = tk.StringVar(value=os.path.join("jobs", "job_gonzalo.json"))
+        self._preparar_job_temporario(force=False)
         self.slot = tk.StringVar(value="txt_artista")
         self.modo = tk.StringVar(value="Gerado")
         self.overlay_alpha = tk.DoubleVar(value=.5)
@@ -106,7 +122,12 @@ class EditorVisual(tk.Tk):
         self.metricas = tk.StringVar(value="")
         self.vars = {}
         self.widgets = {}
+        self.scale_vars = {}
+        self.field_steps = {}
         self.dirty_fields = set()
+        self.content_var = None
+        self.content_key = None
+        self.content_dirty = False
         self.current_slot = self.slot.get()
         self.preview_photo = None
         self.preview_scale = 1.0
@@ -193,6 +214,7 @@ class EditorVisual(tk.Tk):
         for texto, comando in (
             ("Salvar temporários", self._salvar_campos),
             ("Salvar em ajustes.json", self._salvar_principal),
+            ("Salvar textos no job", self._salvar_job_original),
             ("Restaurar do ajustes.json", self._restaurar),
             ("Criar backup agora", self._backup),
             ("Abrir outputs", lambda: os.startfile(os.path.join(ROOT, "outputs"))),
@@ -216,8 +238,24 @@ class EditorVisual(tk.Tk):
             filho.destroy()
         self.vars.clear()
         self.widgets.clear()
+        self.scale_vars.clear()
+        self.field_steps.clear()
         self.dirty_fields.clear()
+        self.content_var = None
+        self.content_key = None
+        self.content_dirty = False
         ttk.Label(self.controls_frame, text=self.slot.get(), font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 8))
+        if self.slot.get() in SLOT_JOB_FIELDS:
+            self.content_key, rotulo = SLOT_JOB_FIELDS[self.slot.get()]
+            job = self._carregar_job_temporario()
+            self.content_var = tk.StringVar(value=str(job.get(self.content_key, "")))
+            conteudo = ttk.LabelFrame(self.controls_frame, text=rotulo, padding=6)
+            conteudo.pack(fill="x", pady=(0, 10))
+            entrada_conteudo = ttk.Entry(conteudo, textvariable=self.content_var)
+            entrada_conteudo.pack(fill="x")
+            entrada_conteudo.bind("<KeyRelease>", self._conteudo_digitado)
+            entrada_conteudo.bind("<Return>", self._conteudo_confirmado)
+            entrada_conteudo.bind("<FocusOut>", self._conteudo_confirmado)
         dados = self.estado.get("feed", {}).get(self.slot.get(), {})
         for chave, minimo, maximo, resolucao in self._campos_slot():
             linha = ttk.Frame(self.controls_frame)
@@ -233,20 +271,27 @@ class EditorVisual(tk.Tk):
                 var = tk.StringVar(value=str(valor))
                 widget = ttk.Entry(linha, textvariable=var, width=16)
                 widget.pack(side="left", fill="x", expand=True)
-                widget.bind("<KeyRelease>", lambda _e, c=chave: self._campo_alterado(c))
+                widget.bind("<KeyRelease>", lambda _e, c=chave: self._entrada_digitada(c))
                 widget.bind("<Return>", lambda _e, c=chave: self._controle_solto(c))
                 widget.bind("<FocusOut>", lambda _e, c=chave: self._controle_solto(c))
+                if chave == "cor":
+                    ttk.Button(linha, text="Escolher…", command=lambda c=chave: self._escolher_cor(c)).pack(side="left", padx=(5, 0))
             else:
-                var = tk.DoubleVar(value=float(valor))
-                widget = ttk.Scale(linha, from_=minimo, to=maximo, variable=var,
-                                   command=lambda _v, c=chave: self._campo_alterado(c))
+                passo = float(resolucao)
+                numero = self._quantizar(float(valor), passo)
+                var = tk.StringVar(value=self._formatar_numero(numero, passo))
+                scale_var = tk.DoubleVar(value=numero)
+                widget = ttk.Scale(linha, from_=minimo, to=maximo, variable=scale_var,
+                                   command=lambda v, c=chave, p=passo: self._slider_alterado(c, v, p))
                 widget.pack(side="left", fill="x", expand=True)
                 widget.bind("<ButtonRelease-1>", lambda _e, c=chave: self._controle_solto(c))
                 entrada = ttk.Entry(linha, textvariable=var, width=8)
                 entrada.pack(side="left", padx=(5, 0))
-                entrada.bind("<KeyRelease>", lambda _e, c=chave: self._campo_alterado(c))
+                entrada.bind("<KeyRelease>", lambda _e, c=chave: self._entrada_digitada(c))
                 entrada.bind("<Return>", lambda _e, c=chave: self._controle_solto(c))
                 entrada.bind("<FocusOut>", lambda _e, c=chave: self._controle_solto(c))
+                self.scale_vars[chave] = scale_var
+                self.field_steps[chave] = passo
             self.vars[chave] = var
             self.widgets[chave] = widget
         self.after_idle(self.update_fast_overlay)
@@ -256,16 +301,62 @@ class EditorVisual(tk.Tk):
         if isinstance(var, tk.BooleanVar):
             return bool(valor)
         if chave == "cor":
-            return str(valor)
-        if isinstance(valor, float) and valor.is_integer():
-            return int(valor)
+            cor = str(valor).strip().upper()
+            if len(cor) == 4 and cor.startswith("#"):
+                cor = "#" + "".join(c * 2 for c in cor[1:])
+            if len(cor) != 7 or not cor.startswith("#") or any(c not in "0123456789ABCDEF" for c in cor[1:]):
+                raise ValueError(f"{chave} deve usar o formato #RRGGBB")
+            return cor
+        if chave in self.field_steps:
+            numero = float(str(valor).strip().replace(",", "."))
+            numero = self._quantizar(numero, self.field_steps[chave])
+            return int(numero) if self.field_steps[chave] >= 1 else numero
         return valor
+
+    @staticmethod
+    def _quantizar(valor, passo):
+        return round(round(float(valor) / passo) * passo, 6)
+
+    @staticmethod
+    def _formatar_numero(valor, passo):
+        if passo >= 1:
+            return str(int(round(valor)))
+        casas = max(1, len(str(passo).rstrip("0").split(".")[-1]))
+        return f"{valor:.{casas}f}".rstrip("0").rstrip(".")
+
+    def _slider_alterado(self, chave, valor, passo):
+        numero = self._quantizar(float(valor), passo)
+        self.vars[chave].set(self._formatar_numero(numero, passo))
+        if abs(self.scale_vars[chave].get() - numero) > passo / 100:
+            self.scale_vars[chave].set(numero)
+        self._campo_alterado(chave)
+
+    def _entrada_digitada(self, chave):
+        self.dirty_fields.add(chave)
+        self.change_version += 1
+        self.status.set("Valor editado — confirme com Enter ou saia do campo.")
+        try:
+            valor = self._valor(chave, self.vars[chave])
+            if chave in self.scale_vars:
+                self.scale_vars[chave].set(float(valor))
+            self.update_fast_overlay()
+        except (ValueError, tk.TclError):
+            pass
+
+    def _escolher_cor(self, chave):
+        atual = self.vars[chave].get()
+        _rgb, hexadecimal = colorchooser.askcolor(color=atual if str(atual).startswith("#") else "#FFFFFF", parent=self)
+        if hexadecimal:
+            self.vars[chave].set(hexadecimal.upper())
+            self._controle_solto(chave)
 
     def _salvar_campos(self, slot=None):
         slot = slot or self.current_slot
         alteracoes = {chave: self._valor(chave, self.vars[chave]) for chave in self.dirty_fields}
         if alteracoes:
             editor_state.atualizar_slot("feed", slot, alteracoes)
+        if self.content_dirty:
+            self._salvar_conteudo_temporario()
         self.estado = editor_state.carregar_temporario()
         self.dirty_fields.clear()
         self.status.set("Ajustes temporários salvos.")
@@ -287,6 +378,14 @@ class EditorVisual(tk.Tk):
             self.debounce_id = self.after(300, self.render_preview_fast)
 
     def _controle_solto(self, chave):
+        try:
+            valor = self._valor(chave, self.vars[chave])
+            if chave in self.field_steps:
+                self.vars[chave].set(self._formatar_numero(float(valor), self.field_steps[chave]))
+                self.scale_vars[chave].set(float(valor))
+        except (ValueError, tk.TclError) as exc:
+            self.status.set(f"Valor inválido: {exc}")
+            return
         self._campo_alterado(chave)
         politica = self.politica_render.get()
         if politica == POLICY_RELEASE:
@@ -299,7 +398,12 @@ class EditorVisual(tk.Tk):
             self.debounce_id = self.after(50, self.render_preview_fast)
 
     def _trocar_slot(self, _evento=None):
-        self._salvar_campos(self.current_slot)
+        try:
+            self._salvar_campos(self.current_slot)
+        except ValueError as exc:
+            self.slot.set(self.current_slot)
+            self.status.set(f"Conteúdo inválido: {exc}")
+            return
         self.current_slot = self.slot.get()
         self._reconstruir_controles()
 
@@ -307,12 +411,103 @@ class EditorVisual(tk.Tk):
         caminho = filedialog.askopenfilename(initialdir=os.path.join(ROOT, "jobs"), filetypes=(("JSON", "*.json"),))
         if caminho:
             self.job_path.set(os.path.relpath(caminho, ROOT))
+            self._preparar_job_temporario(force=True)
+            self._reconstruir_controles()
             self._recarregar_gerado(force=True)
             self._mostrar_preview()
 
-    def _job_absoluto(self):
+    def _source_job_absoluto(self):
         caminho = self.job_path.get().strip()
         return caminho if os.path.isabs(caminho) else os.path.join(ROOT, caminho)
+
+    def _job_absoluto(self):
+        return JOB_TEMP_PATH
+
+    @staticmethod
+    def _salvar_json_atomico(caminho, dados):
+        temporario = caminho + ".write.tmp"
+        with open(temporario, "w", encoding="utf-8") as arquivo:
+            json.dump(dados, arquivo, ensure_ascii=False, indent=2)
+            arquivo.write("\n")
+        os.replace(temporario, caminho)
+
+    def _preparar_job_temporario(self, force=False):
+        origem = os.path.abspath(self._source_job_absoluto())
+        if not force and os.path.isfile(JOB_TEMP_PATH):
+            try:
+                with open(JOB_TEMP_PATH, "r", encoding="utf-8") as arquivo:
+                    existente = json.load(arquivo)
+                if existente.get("_editor_source") == origem:
+                    return
+            except (OSError, json.JSONDecodeError):
+                pass
+        with open(origem, "r", encoding="utf-8") as arquivo:
+            dados = json.load(arquivo)
+        dados["_editor_source"] = origem
+        self._salvar_json_atomico(JOB_TEMP_PATH, dados)
+
+    @staticmethod
+    def _carregar_job_temporario():
+        with open(JOB_TEMP_PATH, "r", encoding="utf-8") as arquivo:
+            return json.load(arquivo)
+
+    def _validar_conteudo(self):
+        if not self.content_key or self.content_var is None:
+            return None
+        valor = self.content_var.get().strip()
+        if not valor:
+            raise ValueError("o conteúdo não pode ficar vazio")
+        if self.content_key == "edicao":
+            try:
+                numero = int(valor)
+            except ValueError as exc:
+                raise ValueError("edição deve ser um número inteiro") from exc
+            if numero <= 0:
+                raise ValueError("edição deve ser positiva")
+            return numero
+        if self.content_key == "data":
+            try:
+                dt.date.fromisoformat(valor)
+            except ValueError as exc:
+                raise ValueError("data deve usar AAAA-MM-DD") from exc
+        return valor
+
+    def _salvar_conteudo_temporario(self):
+        valor = self._validar_conteudo()
+        if self.content_key and valor is not None:
+            dados = self._carregar_job_temporario()
+            dados[self.content_key] = valor
+            self._salvar_json_atomico(JOB_TEMP_PATH, dados)
+        self.content_dirty = False
+
+    def _conteudo_digitado(self, _evento=None):
+        self.content_dirty = True
+        self.change_version += 1
+        self.status.set("Texto editado — preview rápido pendente.")
+        try:
+            self._validar_conteudo()
+        except ValueError:
+            return
+        if self.politica_render.get() == POLICY_MANUAL:
+            if self.debounce_id:
+                self.after_cancel(self.debounce_id)
+            self.debounce_id = self.after(300, self.render_preview_fast)
+
+    def _conteudo_confirmado(self, _evento=None):
+        try:
+            self._salvar_conteudo_temporario()
+        except ValueError as exc:
+            self.status.set(f"Conteúdo inválido: {exc}")
+            return
+        politica = self.politica_render.get()
+        if politica == POLICY_MANUAL:
+            self.render_preview_fast()
+        elif politica == POLICY_RELEASE:
+            self.render_preview_real()
+        else:
+            if self.debounce_id:
+                self.after_cancel(self.debounce_id)
+            self.debounce_id = self.after(1500, self.render_preview_real)
 
     def _output_path(self):
         try:
@@ -399,11 +594,20 @@ class EditorVisual(tk.Tk):
         except tk.TclError:
             pass
 
+    @staticmethod
+    def _resumir_erro(processo):
+        texto = (processo.stderr or processo.stdout or "Erro desconhecido").strip()
+        linhas = [linha.strip() for linha in texto.splitlines() if linha.strip()]
+        for linha in reversed(linhas):
+            if linha.startswith(("ValueError:", "RuntimeError:", "ERRO:")):
+                return linha
+        return linhas[-1] if linhas else "Erro desconhecido"
+
     def _fast_concluido(self, versao, epoch, processo):
         self.fast_running = False
         if processo.returncode != 0:
             self.status.set("Falha no preview rápido.")
-            messagebox.showerror("Erro no preview rápido", processo.stderr or processo.stdout)
+            messagebox.showerror("Erro no preview rápido", self._resumir_erro(processo))
         elif versao == self.change_version and epoch == self.preview_epoch:
             self._recarregar_gerado(force=True, caminho=FAST_PREVIEW_PATH, atualizar_metricas=False)
             self.status.set("Preview rápido atualizado — validação PSD pendente.")
@@ -418,7 +622,7 @@ class EditorVisual(tk.Tk):
         self.render_running = False
         if processo.returncode != 0:
             self.status.set("Falha no preview.")
-            messagebox.showerror("Erro ao renderizar", processo.stderr or processo.stdout)
+            messagebox.showerror("Erro ao renderizar", self._resumir_erro(processo))
         elif versao == self.change_version:
             self._recarregar_gerado(force=True)
             self.status.set("Preview atualizado.")
@@ -544,9 +748,16 @@ class EditorVisual(tk.Tk):
             return
         self.drag_start = (evento.x, evento.y)
         self.drag_values = (
-            float(self.vars.get("offset_x", tk.DoubleVar(value=0)).get()),
-            float(self.vars.get("offset_y", tk.DoubleVar(value=0)).get()),
+            float(self._valor("offset_x", self.vars["offset_x"])) if "offset_x" in self.vars else 0,
+            float(self._valor("offset_y", self.vars["offset_y"])) if "offset_y" in self.vars else 0,
         )
+
+    def _set_numero_controle(self, chave, valor):
+        passo = self.field_steps.get(chave, 1)
+        numero = self._quantizar(valor, passo)
+        self.vars[chave].set(self._formatar_numero(numero, passo))
+        if chave in self.scale_vars:
+            self.scale_vars[chave].set(numero)
 
     def _drag_movimento(self, evento):
         if not self.drag_start:
@@ -555,10 +766,10 @@ class EditorVisual(tk.Tk):
         dy = (evento.y - self.drag_start[1]) / max(self.preview_scale, .001)
         slot = self.slot.get()
         if "offset_x" in self.vars and slot not in {"txt_data_mes", "txt_data_dia", "txt_data_semana", "txt_data_hora"}:
-            self.vars["offset_x"].set(round(self.drag_values[0] + dx))
+            self._set_numero_controle("offset_x", self.drag_values[0] + dx)
             self.dirty_fields.add("offset_x")
         if "offset_y" in self.vars:
-            self.vars["offset_y"].set(round(self.drag_values[1] + dy))
+            self._set_numero_controle("offset_y", self.drag_values[1] + dy)
             self.dirty_fields.add("offset_y")
         self.change_version += 1
         self.status.set("Preview rápido — arrastando guia.")
@@ -592,6 +803,25 @@ class EditorVisual(tk.Tk):
     def _backup(self):
         backup = editor_state.criar_backup()
         self.status.set(f"Backup criado: {os.path.basename(backup)}")
+
+    def _salvar_job_original(self):
+        try:
+            self._salvar_campos()
+        except ValueError as exc:
+            messagebox.showerror("Conteúdo inválido", str(exc))
+            return
+        if not messagebox.askyesno("Salvar textos", "Criar backup e atualizar o job selecionado?"):
+            return
+        origem = self._source_job_absoluto()
+        os.makedirs(editor_state.BACKUPS_DIR, exist_ok=True)
+        timestamp = dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        backup = os.path.join(editor_state.BACKUPS_DIR,
+                              f"job_{os.path.splitext(os.path.basename(origem))[0]}_{timestamp}.json")
+        shutil.copy2(origem, backup)
+        dados = self._carregar_job_temporario()
+        dados.pop("_editor_source", None)
+        self._salvar_json_atomico(origem, dados)
+        self.status.set(f"Job salvo. Backup: {os.path.basename(backup)}")
 
     def _gerar_final(self):
         subprocess.Popen([sys.executable, "gerar.py", "--job", self._job_absoluto()], cwd=ROOT)

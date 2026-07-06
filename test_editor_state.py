@@ -42,6 +42,15 @@ class EditorStateTest(unittest.TestCase):
         self.assertEqual(editor_state._ler(backup)["feed"]["txt_artista"]["tamanho"], 100)
         self.assertEqual(editor_state._ler(self.principal)["feed"]["txt_artista"]["tamanho"], 120)
 
+    def test_migra_cor_css_curta_do_temporario(self):
+        with open(self.temporario, "w", encoding="utf-8") as arquivo:
+            json.dump({"feed": {"txt_artista": {"cor": "#f0a"}}}, arquivo)
+
+        dados = editor_state.inicializar_temporario()
+
+        self.assertEqual(dados["feed"]["txt_artista"]["cor"], "#FF00AA")
+        self.assertEqual(editor_state._ler(self.temporario), dados)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -51,6 +51,24 @@ def carregar_ajustes(caminho=None):
             tracking = ajuste.get("tracking")
             if tracking is not None and (not isinstance(tracking, (int, float)) or isinstance(tracking, bool)):
                 raise ValueError(f"ajustes.{formato}.{slot}.tracking deve ser um número")
+            cor = ajuste.get("cor")
+            if cor is not None and (
+                not isinstance(cor, str) or len(cor) != 7 or not cor.startswith("#")
+                or any(c not in "0123456789abcdefABCDEF" for c in cor[1:])
+            ):
+                raise ValueError(f"ajustes.{formato}.{slot}.cor deve usar #RRGGBB")
+            for campo_opacidade in (
+                "opacidade", "textura_opacidade", "mascara_opacidade",
+                "grain_opacidade", "bordas_opacidade", "desgaste",
+            ):
+                valor_opacidade = ajuste.get(campo_opacidade)
+                if valor_opacidade is not None and (
+                    not isinstance(valor_opacidade, (int, float))
+                    or isinstance(valor_opacidade, bool) or not 0 <= valor_opacidade <= 1
+                ):
+                    raise ValueError(
+                        f"ajustes.{formato}.{slot}.{campo_opacidade} deve ficar entre 0 e 1"
+                    )
             espacamento = ajuste.get("espacamento_linhas")
             if espacamento is not None and (not isinstance(espacamento, (int, float)) or isinstance(espacamento, bool) or espacamento <= 0):
                 raise ValueError(f"ajustes.{formato}.{slot}.espacamento_linhas deve ser um número positivo")
