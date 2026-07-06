@@ -337,14 +337,18 @@ def desenhar_texto(base, meta, novo_texto, ajuste=None, log=None):
             bordas = np.asarray(Image.open(bordas_path).convert("L").resize(base.size), dtype=np.float32) / 255
             mask_arr = np.asarray(mascara, dtype=np.float32)
             mask_arr *= 1 - desgaste + desgaste * bordas
-            mascara = Image.fromarray(np.clip(mask_arr, 0, 255).astype(np.uint8), "L")
+            mascara = Image.fromarray(np.clip(mask_arr, 0, 255).astype(np.uint8))
 
-        textura_arr = _textura_para_mascara(textura_path, base.size)
-        cor_misturada = _blend(cor, textura_arr, ajuste.get("textura_blend", "multiply"))
-        textura_opacidade = ajuste.get("textura_opacidade", 0.7)
-        cor_final = np.array(cor, dtype=np.float32) * (1 - textura_opacidade) + cor_misturada * textura_opacidade
-        rgba = np.dstack([np.clip(cor_final, 0, 255).astype(np.uint8), np.array(mascara)])
-        camada = Image.fromarray(rgba, mode="RGBA")
+        if ajuste.get("_preview_fast"):
+            camada = Image.new("RGBA", base.size, (*cor, 0))
+            camada.putalpha(mascara)
+        else:
+            textura_arr = _textura_para_mascara(textura_path, base.size)
+            cor_misturada = _blend(cor, textura_arr, ajuste.get("textura_blend", "multiply"))
+            textura_opacidade = ajuste.get("textura_opacidade", 0.7)
+            cor_final = np.array(cor, dtype=np.float32) * (1 - textura_opacidade) + cor_misturada * textura_opacidade
+            rgba = np.dstack([np.clip(cor_final, 0, 255).astype(np.uint8), np.array(mascara)])
+            camada = Image.fromarray(rgba, mode="RGBA")
         base.alpha_composite(camada)
     else:
         draw = ImageDraw.Draw(base)
@@ -402,7 +406,7 @@ def ajustar_foto(foto, ajuste):
         arr = np.asarray(foto).astype(np.float32)
         arr[..., 0] *= 1 + temperatura / 100
         arr[..., 2] *= 1 - temperatura / 100
-        foto = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB")
+        foto = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
     return foto
 
 
